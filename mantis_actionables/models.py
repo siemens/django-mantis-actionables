@@ -22,11 +22,13 @@ from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes import generic
 
+from datetime import datetime
+
+from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, Identifier
 
 class Action(models.Model):
-    timestamp = models.DateTimeField()
 
     user = models.ForeignKey(User,
                              # We allow this to be null to mark
@@ -36,13 +38,6 @@ class Action(models.Model):
     comment = models.TextField(blank=True)
 
 
-    # Actions can be linked to different models:
-    # - primitive Observables
-    # - IDS Signatures
-
-    content_type = models.ForeignKey(ContentType)
-    object_id = models.PositiveIntegerField()
-    affected = generic.GenericForeignKey('content_type', 'object_id')
 
 class Source(models.Model):
     timestamp = models.DateTimeField()
@@ -52,11 +47,15 @@ class Source(models.Model):
     iobject = models.ForeignKey(InfoObject,
                                 null=True,
                                 related_name='actionable_thru')
-    iobject_fact = models.ForeignKey(Fact,related_name='actionable_thru')
+    iobject_fact = models.ForeignKey(Fact,
+                                     null=True,
+                                     related_name='actionable_thru')
+
     iobject_factvalue = models.ForeignKey(FactValue,
                                           null=True,
                                           related_name='actionable_thru')
-    top_level_iobjects = models.ManyToManyField(InfoObject,related_name='related_actionable_thru')
+
+    top_level_iobject = models.ForeignKey(InfoObject,related_name='related_actionable_thru')
 
     # If the source is a manual import, we reference the Import Info
 
@@ -64,8 +63,50 @@ class Source(models.Model):
                                     null=True,
                                     related_name = 'actionable_thru')
 
+    # Classification of origin
+
+    ORIGIN_UNCERTAIN = 0
+    ORIGIN_PUBLIC = 1
+    ORIGIN_VENDOR = 2
+    ORIGIN_PARTNER = 3
+    ORIGIN_INTERNAL_UNCHECKED = 4
+    ORIGIN_INTERNAL_CHECKED = 5
+
+    ORIGIN_KIND = ((ORIGIN_UNCERTAIN, "Uncertain"),
+                     (ORIGIN_PUBLIC, "Public"),
+                     (ORIGIN_VENDOR, "Provided by vendor"),
+                     (ORIGIN_PARTNER, "Provided by partner"),
+                     (ORIGIN_INTERNAL_UNCHECKED, "Internal (automated input)"),
+                     (ORIGIN_INTERNAL_CHECKED, "Internal (manually selected)"),
+    )
+
+
+
+    origin = models.SmallIntegerField(choices=ORIGIN_KIND,
+                                      help_text = "Chose 'internal (automated input)' for information "
+                                                  "stemming from automated mechanism such as sandbox reports etc.")
+
+
+    TLP_UNKOWN = 0
+    TLP_WHITE = 10
+    TLP_GREEN = 20
+    TLP_AMBER = 30
+    TLP_RED = 40
+
+    TLP_KIND = ((TLP_UNKOWN,"Unknown"),
+                (TLP_WHITE,"White"),
+                (TLP_GREEN,"Green"),
+                (TLP_AMBER,"Amber"),
+                (TLP_RED,"Red"),
+    )
+
+    tlp = models.SmallIntegerField(choices=TLP_KIND)
+
+    url = models.URLField(blank=True)
+
+
     # Sources can be linked to different models:
-    # - primitive Observables
+    # - singleton Observables
     # - IDS Signatures
 
     content_type = models.ForeignKey(ContentType)
@@ -73,29 +114,89 @@ class Source(models.Model):
     yielded = generic.GenericForeignKey('content_type', 'object_id')
 
 
-class PrimitiveObservableType(models.Model):
-    name = models.CharField(max_length=255)
+INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
+NULL_TIME = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def get_inf_time():
+
+    return INF_TIME
+
+def get_null_time():
+
+    return NULL_TIME
+
 
 class Status(models.Model):
 
+    false_positive = models.NullBooleanField(help_text = "If true, the associated information (usually a "
+                                                         "singleton observable) is regarded as false positive"
+                                                         "and never used for detection, no matter what the "
+                                                         "other status fields say")
+
+
+    active = models.BooleanField(default = True,
+                                 help_text = "If true, the associated information is to be used for detection")
+
+    active_from = models.DateTimeField(default = get_null_time)
+    active_to = models.DateTimeField(default = get_inf_time)
+
+    PRIORITY_UNCERTAIN = 0
+    PRIORITY_LOW = 10
+    PRIORITY_MEDIUM = 20
+    PRIORITY_HIGH = 30
+    PRIORITY_HOT = 40
+
+
+    PRIORITY_KIND = ((PRIORITY_UNCERTAIN, "Uncertain"),
+                     (PRIORITY_LOW, "Low"),
+                     (PRIORITY_MEDIUM, "Medium"),
+                     (PRIORITY_HIGH, "High"),
+                     (PRIORITY_HOT, "Hot"),
+    )
+
+    priority = models.SmallIntegerField(choices=PRIORITY_KIND,
+                                      help_text = "If set to uncertain, it is up to the receiving system"
+                                                  "to derive a priority from the additional info provided"
+                                                  "in the source information.")
+
+
+
+
+class Status2X(models.Model):
+
+    action = models.ForeignKey(Action,
+                                related_name='status_thru')
+
+    status = models.ForeignKey(Status,
+                               related_name = 'actionable_thru')
+
+    active = models.BooleanField(default=True)
+
+    timestamp = models.DateTimeField()
+
+
     # Status can be linked to different models:
-    # - primitive Observables
+    # - singleton Observables
     # - IDS Signatures
 
     content_type = models.ForeignKey(ContentType)
     object_id = models.PositiveIntegerField()
-    yielded = generic.GenericForeignKey('content_type', 'object_id')
+    marked = generic.GenericForeignKey('content_type', 'object_id')
 
-class PrimitiveObservable(models.Model):
-    type = models.ForeignKey(PrimitiveObservableType)
+
+class SingletonObservableType(models.Model):
+    name = models.CharField(max_length=255)
+
+    description = models.TextField(blank=True)
+
+class SingletonObservable(models.Model):
+    type = models.ForeignKey(SingletonObservableType)
     value = models.CharField(max_length=2048)
 
-    # We keep track of
-    # - actions performed (usually status changes)
-    # - sources (import or repeated finding)
+    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
 
-    actions = generic.GenericRelation(Action,related_query_name='primitive_observables')
-    source = generic.GenericRelation(Source,related_query_name='primitive_observables')
+    sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
     class Meta:
         unique_together = ('type', 'value')
@@ -106,10 +207,14 @@ class SignatureType(models.Model):
 
 class IDSSignature(models.Model):
     type = models.ForeignKey(SignatureType)
-    content = models.TextField()
+    value = models.TextField()
 
-    actions = generic.GenericRelation(Action,related_query_name='ids_signatures')
-    source = generic.GenericRelation(Source,related_query_name='ids_signatures')
+    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
+
+    sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
+
+    class Meta:
+        unique_together = ('type', 'value')
 
 
 class ImportInfo(models.Model):
@@ -118,10 +223,10 @@ class ImportInfo(models.Model):
                              # imports carried out by the system
                              null=True)
 
-    iobject_identifier = models.ForeignKey(Identifier,
-                                           null=True,
-                                           help_text="If provided, should point to the identifier"
-                                                     " of a STIX Incident object")
+    #iobject_identifier = models.ForeignKey(Identifier,
+    #                                       null=True,
+    #                                       help_text="If provided, should point to the identifier"
+    #                                                 " of a STIX Incident object")
 
     comment = models.TextField(blank=True)
 
