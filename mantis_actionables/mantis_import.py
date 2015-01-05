@@ -17,6 +17,13 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+import ipaddr, datetime
+
+from dingos.models import InfoObject
+from dingos.view_classes import POSTPROCESSOR_REGISTRY
+from dingos.graph_traversal import follow_references
+
+from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES
 
 def extract_singleton_observable(exporter_result):
     """
@@ -61,7 +68,61 @@ def extract_singleton_observable(exporter_result):
         to return either type "FQDN" or "URL"
       - Return the provided fqdn as value
     """
-    pass
+    print "ENTERING IMPORT"
+
+    exporter = exporter_result.get('exporter')
+    if exporter:
+        if exporter == "IPs":
+            try:
+                ip = ipaddr.IPAddress(exporter_result['ip'])
+            except ValueError:
+                #invalid ip address
+                return (None,exporter_result['ip'])
+            if ip.version == 4:
+                return ('IPv4',exporter_result['ip'])
+            else:
+                return ('IPv6',exporter_result['ip'])
+
+        elif exporter == "hashes":
+            #TODO add ALL supported valid_hashtypes
+            #valid_hashtypes = ['MD5','SHA1','SHA256']
+            hash_type = exporter_result.get('hash_type')
+            hash_value = exporter_result.get('hash_value')
+            if hash_value:
+                if hash_type: #and hash_type in valid_hashtypes:
+                    return (hash_type,hash_value)
+                else:
+                    """
+                    By the definition in FIPS 180-4, published March 2012, there are
+                    160 bits in the output of SHA-1
+                    224 bits in the output of SHA-224
+                    256 bits in the output of SHA-256
+                    384 bits in the output of SHA-384
+                    512 bits in the output of SHA-512
+                    224 bits in the output of SHA-512/224
+                    256 bits in the output of SHA-512/256
+                    """
+                    length_hashtype_map = {
+                        32 : "MD5",
+                        40 : "SHA1",
+                        64 : "SHA256"
+                    }
+
+                    try:
+                        hash_type = length_hashtype_map[len(hash_value)]
+                        return (hash_type,hash_value)
+                    except KeyError:
+                        #no suiting hash_type found
+                        #TODO fallback?
+                        pass
+
+        elif exporter == "fqdn":
+            #TODO fqdn or url? difference?
+            return ('FQDN',exporter_result['fqdn'])
+
+    #exception, no exporter found
+    print "NO EXPORTER FOUND named %s" % (exporter)
+
 
 def process_STIX_Reports(imported_since, imported_until=None):
     """
@@ -143,5 +204,27 @@ def process_STIX_Reports(imported_since, imported_until=None):
         - leave ORIGIN set to uncertain for now.
 
     """
+    if not imported_until:
+        imported_until = datetime.datetime.now()
+    filter = STIX_REPORT_FAMILY_AND_TYPES[0]
+    matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
+                                              create_timestamp__lte=imported_until,
+                                              iobject_type__name=filter['iobject_type'],
+                                              iobject_family__name=filter['iobject_type_family'])
+    #TODO multiple familys and types concat by OR
 
-    pass
+    skip_terms = [{'term':'Related','operator':'icontains'}]
+    graph= follow_references([x.id for x in matching_stix],
+                                 skip_terms = skip_terms,
+                                 direction='down'
+                                 )
+
+    for exporter in ACTIVE_MANTIS_EXPORTERS:
+        postprocessor_class = POSTPROCESSOR_REGISTRY[exporter]
+        postprocessor = postprocessor_class(graph=graph,
+                                            query_mode='vIO2FValue',
+                                            )
+        columns = []
+        (content_type,result) = postprocessor.export(*columns, override_columns = 'ALMOST_ALL', format='dict')
+        for x in result:
+            print extract_singleton_observable(x)
