@@ -24,6 +24,13 @@ from dingos.view_classes import POSTPROCESSOR_REGISTRY
 from dingos.graph_traversal import follow_references
 
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES
+from .models import SingletonObservable, SingletonObservableType
+
+#build a name to pk mapping for SingletonObservableTypes on server startup
+singleton_observable_types = {}
+singleton_observable_types_qs = SingletonObservableType.objects.all()
+for type in singleton_observable_types_qs:
+    singleton_observable_types[type.name] = type.pk
 
 def extract_singleton_observable(exporter_result):
     """
@@ -68,8 +75,6 @@ def extract_singleton_observable(exporter_result):
         to return either type "FQDN" or "URL"
       - Return the provided fqdn as value
     """
-    print "ENTERING IMPORT"
-
     exporter = exporter_result.get('exporter')
     if exporter:
         if exporter == "IPs":
@@ -213,18 +218,34 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                               iobject_family__name=filter['iobject_type_family'])
     #TODO multiple familys and types concat by OR
 
+    #TODO needed??
     skip_terms = [{'term':'Related','operator':'icontains'}]
-    graph= follow_references([x.id for x in matching_stix],
+    iobject_id_list = [x.id for x in matching_stix]
+    if iobject_id_list:
+        graph= follow_references(iobject_id_list,
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
 
-    for exporter in ACTIVE_MANTIS_EXPORTERS:
-        postprocessor_class = POSTPROCESSOR_REGISTRY[exporter]
-        postprocessor = postprocessor_class(graph=graph,
-                                            query_mode='vIO2FValue',
-                                            )
-        columns = []
-        (content_type,result) = postprocessor.export(*columns, override_columns = 'ALMOST_ALL', format='dict')
-        for x in result:
-            print extract_singleton_observable(x)
+        for exporter in ACTIVE_MANTIS_EXPORTERS:
+            postprocessor_class = POSTPROCESSOR_REGISTRY[exporter]
+            postprocessor = postprocessor_class(graph=graph,
+                                                query_mode='vIO2FValue',
+                                                )
+            columns = []
+            (content_type,results) = postprocessor.export(*columns, override_columns = 'ALMOST_ALL', format='dict')
+            if results:
+                for result in results:
+                    (type,value) = extract_singleton_observable(result)
+                    try:
+                        type_pk = singleton_observable_types[type]
+                    except KeyError:
+                        obj, created = SingletonObservableType.objects.get_or_create(name=type)
+                        singleton_observable_types[type] = obj.pk
+                        type_pk = obj.pk
+
+                    obj, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
+                    if created:
+                        print "created (%s,%s)" % (type,value)
+                    else:
+                        print "not created, already in database"
