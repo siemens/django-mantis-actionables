@@ -19,18 +19,28 @@
 #
 import ipaddr, datetime
 
-from dingos.models import InfoObject
+from django.contrib.contenttypes.models import ContentType
+
+from dingos.models import InfoObject,vIO2FValue
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
 from dingos.graph_traversal import follow_references
 
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES
-from .models import SingletonObservable, SingletonObservableType
+from .models import SingletonObservable, SingletonObservableType, Source
 
 #build a name to pk mapping for SingletonObservableTypes on server startup
 singleton_observable_types = {}
 singleton_observable_types_qs = SingletonObservableType.objects.all()
 for type in singleton_observable_types_qs:
     singleton_observable_types[type.name] = type.pk
+
+#color tlp mapping
+tlp_color_map = {}
+for (id,color) in Source.TLP_KIND:
+    tlp_color_map[color.lower()] = id
+
+#content_type_id
+CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
 def extract_singleton_observable(exporter_result):
     """
@@ -212,17 +222,19 @@ def process_STIX_Reports(imported_since, imported_until=None):
     if not imported_until:
         imported_until = datetime.datetime.now()
     filter = STIX_REPORT_FAMILY_AND_TYPES[0]
-    matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                              create_timestamp__lte=imported_until,
+    matching_stix = InfoObject.objects.filter(#create_timestamp__gte=imported_since,
+                                              #create_timestamp__lte=imported_until,
                                               iobject_type__name=filter['iobject_type'],
-                                              iobject_family__name=filter['iobject_type_family'])
+                                              iobject_family__name=filter['iobject_type_family'],
+                                              id=10910)
     #TODO multiple familys and types concat by OR
 
     #TODO needed??
     skip_terms = [{'term':'Related','operator':'icontains'}]
-    iobject_id_list = [x.id for x in matching_stix]
-    if iobject_id_list:
-        graph= follow_references(iobject_id_list,
+    #iobject_id_list = [x.id for x in matching_stix]
+    #iobject_id_list = [10910]
+    for stix in matching_stix:
+        graph= follow_references([stix.id],
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
@@ -232,10 +244,22 @@ def process_STIX_Reports(imported_since, imported_until=None):
             postprocessor = postprocessor_class(graph=graph,
                                                 query_mode='vIO2FValue',
                                                 )
-            columns = []
-            (content_type,results) = postprocessor.export(*columns, override_columns = 'ALMOST_ALL', format='dict')
+            (content_type,results) = postprocessor.export(override_columns = 'ALMOST_ALL', format='dict')
+            print results
             if results:
+                iobject_pks = [result['object.pk'] for result in results]
+                select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
+                color_qs = InfoObject.objects.filter(id__in=iobject_pks)\
+                    .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure', marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
+                    .values_list(*select_columns)
+                iobj_to_color = {}
+                for map in color_qs:
+                    iobj_to_color[map[0]] = map[1]
+
                 for result in results:
+                    iobj_pk = int(result['object.pk'])
+                    fact_pk = int(result['fact.pk'])
+                    fact_value_pk = int(result['value.pk'])
                     (type,value) = extract_singleton_observable(result)
                     try:
                         type_pk = singleton_observable_types[type]
@@ -246,6 +270,22 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
                     obj, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
                     if created:
-                        print "created (%s,%s)" % (type,value)
+                        print "singleton created (%s,%s)" % (type,value)
                     else:
-                        print "not created, already in database"
+                        print "singleton not created, already in database"
+
+                    obj, created = Source.objects.get_or_create(timestamp=datetime.datetime.now(),
+                                                                iobject_id=iobj_pk,
+                                                                iobject_fact_id=fact_pk,
+                                                                iobject_factvalue_id=fact_value_pk,
+                                                                top_level_iobject=stix,
+                                                                origin=Source.ORIGIN_UNCERTAIN,
+                                                                tlp=tlp_color_map.get(iobj_to_color[iobj_pk],Source.TLP_UNKOWN),
+                                                                object_id=obj.id,
+                                                                content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
+                                                                )
+
+                    if created:
+                        print "source object created (%s,%s)" % (iobj_pk,iobj_to_color[iobj_pk])
+                    else:
+                        print "source not created, already in database"
