@@ -1,0 +1,84 @@
+.result_box .dataTables_filter, .result_box .dataTables_length, .result_box .dataTables_info {
+    display: none;
+}
+table.result_table thead th {
+    padding: 6px 10px;
+}
+table.result_table thead th {
+    height: 15px;
+}
+table.result_table tfoot tr {
+    height: 35px;
+}
+table.result_table tbody td {
+    height: 15px;
+}
+table.result_table tbody tr:last-child td {
+    height: auto;
+}
+table.result_table {
+    /* we currently fix the heigth of the table so we dont have jumping on pagination */
+    height: 421px !important;
+}
+
+.result_table thead tr th {
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+}
+
+h2.result_head {
+    border-top: 1px solid #ccc;
+    border-left: 1px solid #ccc;
+    border-right: 1px solid #ccc;
+    border-bottom: 0;
+}
+
+table.result_table .tbl_hide {
+    display:none;
+}
+
+.result_head button {
+    margin-left: 0px;
+}
+
+.result_head button.dt_filter_rst {
+    margin-left: -1px;
+    border-top-left-radius: 0px;
+    border-bottom-left-radius: 0px;
+}
+
+.dataTables_paginate .ui-button:hover {
+    color: white;
+}
+.dataTables_paginate .ui-button {
+    border-radius: 0px;
+    margin-left: 0px;
+    margin-right: 0px;
+}
+.dataTables_paginate {
+    margin-top: 1px;
+}
+.dataTables_paginate .ui-button .ui-button-text {
+    font-size: 0.8em;
+    padding: 2px 10px;
+}
+
+
+/* Make dashboard boxes align a little bit better - nah still crap */
+.grp-module .grp-row.grp-cells:not(tr) .grp-cell {
+  display: inline-block;
+  width: 48%;
+  overflow: auto;
+}
+
+/* make the boxes somewhat responsive */
+@media (max-width: 1300px) {
+    .grp-module .grp-row.grp-cells:not(tr) .grp-cell {
+	display: block;
+	width: 100%;
+    }
+    .grp-module .grp-row > .grp-cell {
+	padding: 20px 0px !important;
+	margin: 0;
+    }
+}

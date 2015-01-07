@@ -5,6 +5,7 @@
 {% endblock extrastyle%}
 {% block javascripts %}
     {{ block.super }}
+    <script data-main="{% static 'mantis_actionables/js/' %}" src="{% static 'mantis_actionables/js/require.js' %}"></script>
     <script src="{% static 'mantis_actionables/js/mantis_actionables.js' %}"></script>
 {% endblock javascripts %}
 {% load startswith_tags %}
@@ -13,34 +14,39 @@
       <div class="l-2cr-responsive l-2cr-fluid">
         <div class="c-2">
           <div class="grp-module">
-
             <div class="grp-row grp-cells">
-              <div class="grp-cell result_box">
-                <h2 class="result_head clearfix">
-		            <img src="{% get_StixIcon 'Indicator' 'stix.mitre.org' %}" width="25" height="25"> IP Indicators <span class="res_num"></span>
-                </h2>
-                <table id="ip_indicators" cellspacing="0" class="grp-sortable result_table" width="100%">
-                  <thead>
-                    <tr>
-                      <th>Creation Timestamp</th>
-                      <th>Value</th>
-                      <th>Object Type</th>
-                      <th>Namespace</th>
-                      <th>Package</th>
-                    </tr>
-                  </thead>
-                  <tfoot>
-                    <tr>
-                      <th></th>
-                      <th></th>
-                      <th><select id="ip_indicators_object_filter"></select></th>
-                      <th><select id="ip_indicators_namespace_filter"></select></th>
-                      <th></th>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-	        </div>
+              {% for table in tables %}
+                <div class="grp-cell result_box">
+                  <h2 class="result_head clearfix"> {{ table.0 }} <span class="res_num"></span></h2>
+                  <table id="{{ table.1 }}" cellspacing="0" class="grp-sortable result_table" width="100%">
+                    <thead>
+                      <tr>
+                        <th>Source Timestamp</th>
+                        {% if table.3 %}
+                          <th>SingletonObservableType</th>
+                        {% endif %}
+                        <th>Value</th>
+                        <th>TLP</th>
+                        <th>STIX Namespace</th>
+                        <th>STIX Name</th>
+                      </tr>
+                    </thead>
+                    <tfoot>
+                      <tr>
+                        <th></th>
+                        {% if table.3 %}
+                          <th></th>
+                        {% endif %}
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              {% endfor %}
+            </div>
           </div>
         </div>
       </div>

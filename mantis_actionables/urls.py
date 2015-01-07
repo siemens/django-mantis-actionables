@@ -19,13 +19,12 @@ __author__ = 'Philipp Lang'
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, include, url
-#TODO add VIEW
-#from .views import
+from .views import index
 
-# urlpatterns = patterns(
-#     'mantis_actionables.views',
-#     #url(r'^$', 'index', name='index'),
-#     #url(r'^refresh/$', 'refresh', name='refresh'),
-#     #url(r'^tbl_data$', DashboardTableSource.as_view(), name='table_data_source'),
-#     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
-# )
+urlpatterns = patterns(
+    'mantis_actionables.views',
+    url(r'^$', 'index', name='index'),
+    #url(r'^refresh/$', 'refresh', name='refresh'),
+    #url(r'^tbl_data$', DashboardTableSource.as_view(), name='table_data_source'),
+    #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
+)
