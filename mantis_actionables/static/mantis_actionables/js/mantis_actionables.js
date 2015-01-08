@@ -50,25 +50,6 @@
 				});
 			    });
 
-			    // Wrap link object id link around second column
-			    $.each(data.data, function(i,v){
-				var link_text = $.trim(v[2])==''? '<EMPTY>' : v[2];
-				v[2]=$('<div>').append($('<a target="_blank" href="/mantis/View/InfoObject/'+encodeURIComponent(v[0])+'"></a>').text(link_text)).html();
-				v.splice(0,1); // remove the id from the dataset
-			    });
-
-			    // Wrap the STIX package link around the last column
-			    $.each(data.data, function(i,v){
-				if($.trim(v[5])==''){
-				    v[4] = '';
-				}else{
-				    var link_text = v[5];
-				    v[4]=$('<div>').append($('<a target="_blank" href="/mantis/View/InfoObject/'+encodeURIComponent(v[4])+'"></a>').text(link_text)).html();
-				}
-				v.splice(5,1); // remove the id from the dataset
-			    });
-
-
 			    // Show total in headline
 			    var hl_count = data.recordsTotal;
 			    if(data.recordsFiltered != data.recordsTotal)

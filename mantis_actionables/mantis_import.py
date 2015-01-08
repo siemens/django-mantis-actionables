@@ -17,9 +17,11 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-import ipaddr, datetime
+import ipaddr, datetime, re
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
 
 from dingos.models import InfoObject,vIO2FValue
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
@@ -41,6 +43,22 @@ for (id,color) in Source.TLP_KIND:
 
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+
+def is_valid_fqdn(fqdn):
+    if len(fqdn) > 255:
+        return False
+    if fqdn[-1] == ".":
+        fqdn = fqdn[:-1] # strip exactly one dot from the right, if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in fqdn.split("."))
+
+def is_valid_url(url):
+    val = URLValidator()
+    try:
+        val(url)
+    except ValidationError:
+        return False
+    return True
 
 def extract_singleton_observable(exporter_result):
     """
@@ -128,15 +146,21 @@ def extract_singleton_observable(exporter_result):
                         return (hash_type,hash_value)
                     except KeyError:
                         #no suiting hash_type found
-                        #TODO fallback?
-                        pass
+                        return (None,None)
+            else:
+                return (None,None)
 
         elif exporter == "fqdn":
-            #TODO fqdn or url? difference?
-            return ('FQDN',exporter_result['fqdn'])
+            to_validate = exporter_result['fqdn']
+            if(is_valid_fqdn(to_validate)):
+                return ('FQDN',to_validate)
+            elif(is_valid_url(to_validate)):
+                return ('URL',to_validate)
+            return (None,None)
 
     #exception, no exporter found
     print "NO EXPORTER FOUND named %s" % (exporter)
+    return (None,None)
 
 
 def process_STIX_Reports(imported_since, imported_until=None):
@@ -219,6 +243,10 @@ def process_STIX_Reports(imported_since, imported_until=None):
         - leave ORIGIN set to uncertain for now.
 
     """
+    print "color map"
+    print tlp_color_map
+
+
     if not imported_until:
         imported_until = datetime.datetime.now()
     filter = STIX_REPORT_FAMILY_AND_TYPES[0]
@@ -226,13 +254,11 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                               #create_timestamp__lte=imported_until,
                                               iobject_type__name=filter['iobject_type'],
                                               iobject_family__name=filter['iobject_type_family'],
-                                              id=10910)
+                                              id=48)
     #TODO multiple familys and types concat by OR
 
     #TODO needed??
     skip_terms = [{'term':'Related','operator':'icontains'}]
-    #iobject_id_list = [x.id for x in matching_stix]
-    #iobject_id_list = [10910]
     for stix in matching_stix:
         graph= follow_references([stix.id],
                                  skip_terms = skip_terms,
@@ -245,7 +271,6 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                 query_mode='vIO2FValue',
                                                 )
             (content_type,results) = postprocessor.export(override_columns = 'ALMOST_ALL', format='dict')
-            print results
             if results:
                 iobject_pks = [result['object.pk'] for result in results]
                 select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
@@ -254,13 +279,15 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     .values_list(*select_columns)
                 iobj_to_color = {}
                 for map in color_qs:
-                    iobj_to_color[map[0]] = map[1]
+                    iobj_to_color[map[0]] = map[1].lower()
 
                 for result in results:
                     iobj_pk = int(result['object.pk'])
                     fact_pk = int(result['fact.pk'])
                     fact_value_pk = int(result['value.pk'])
                     (type,value) = extract_singleton_observable(result)
+                    if not (type and value):
+                        continue
                     try:
                         type_pk = singleton_observable_types[type]
                     except KeyError:
@@ -280,12 +307,12 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                                 iobject_factvalue_id=fact_value_pk,
                                                                 top_level_iobject=stix,
                                                                 origin=Source.ORIGIN_UNCERTAIN,
-                                                                tlp=tlp_color_map.get(iobj_to_color[iobj_pk],Source.TLP_UNKOWN),
+                                                                tlp=tlp_color_map.get(iobj_to_color.get(iobj_pk,None),Source.TLP_UNKOWN),
                                                                 object_id=obj.id,
                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
                                                                 )
 
                     if created:
-                        print "source object created (%s,%s)" % (iobj_pk,iobj_to_color[iobj_pk])
+                        print "source object created (%s,%s)" % (iobj_pk,iobj_to_color.get(iobj_pk,'TLP_UNKOWN'))
                     else:
                         print "source not created, already in database"

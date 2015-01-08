@@ -2,6 +2,7 @@ __author__ = 'Philipp Lang'
 
 from django.shortcuts import render_to_response
 from django.template import RequestContext
+from django.db.models import Q
 
 from querystring_parser import parser
 
@@ -17,8 +18,9 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def getTableColumns(table):
-        return {
+def getTableColumns(count):
+    if count == 6:
+        cols = {
             0: 'sources__timestamp',
             1: 'type__name',
             2: 'value',
@@ -26,84 +28,118 @@ def getTableColumns(table):
             #TODO replace with MANTIS iobject info
             4: 'id',
             5: 'type_id'
-    }
+        }
+    elif count == 5:
+        cols = {
+            0: 'sources__timestamp',
+            1: 'value',
+            2: 'sources__tlp',
+            #TODO replace with MANTIS iobject info
+            3: 'id',
+            4: 'type_id'
+        }
+    else:
+        #exception, wrong column count
+        pass
+    return cols
 
 
 def datatable_query(table_name, post):
     post_dict = parser.parse(str(post.urlencode()))
+
     # Collect prepared statement parameters in here
     params = []
 
-    cols = getTableColumns(table_name)
+    cols = getTableColumns(max(post_dict['columns'])+1)
 
     # Base query
-    s_values = ",".join(cols.values())
     table = DASHBOARD_CONTENTS[table_name]
     if table['basis'] == 'SingletonObservable':
+        base = SingletonObservable.objects
+        types = table['types']
         type_ids = []
-        for type in table['types']:
-            type_ids.append(singleton_observable_types[type])
+        if isinstance(types,str):
+            types = [types]
+        for type in types:
+            try:
+                type_ids.append(singleton_observable_types[type])
+            except KeyError:
+                continue
         if type_ids:
-            q = SingletonObservable.objects.filter(type_id__in=type_ids).values_list(*cols)
-            q_count = SingletonObservable.objects.filter(type_id__in=type_ids).count()
+            q = base.filter(type_id__in=type_ids).values_list(*(cols.values()))
+            q_count = base.filter(type_id__in=type_ids).count()
+        else:
+            return (base.none(),0)
 
     # Treat the filter values (WHERE clause)
-    col_filters = []
+    for x in post_dict.items():
+        print x
+    col_filters = {}
     for colk, colv in post_dict.get('columns', {}).iteritems():
         srch = colv.get('search', False)
+        print srch
         if not srch:
             continue
         srch = srch.get('value', False)
+        print "##############"
+
         if not srch or srch.lower()=='all':
             continue
         # srch should have a value
-        col_filters.append(cols[colk+1] + '=%s')
-        params.append(srch)
+        col_filters[(cols[colk+1] + '__contains')] = srch
 
-    col_search = []
-    # The search value
-    sv = post_dict.get('search', {})
-    sv = str(sv.get('value', '')).strip()
-    if sv!='':
-        for n,c in cols.iteritems():
-            col_search.append( c + '::text ILIKE %s')
-            params.append('%'+sv+'%')
+    if col_filters:
+        queries = [Q(**filter) for filter in col_filters]
+        query = queries.pop()
 
-    if col_filters or col_search:
-        ads = " WHERE "
-        ws = []
-        if col_filters:
-            ws.append("(" + " AND ".join(col_filters) + ")")
-        if col_search:
-            ws.append("(" + " OR ".join(col_search) + ")")
+        # Or the Q object with the ones remaining in the list
+        for item in queries:
+            query |= item
 
-        ads = ads + " AND ".join(ws)
-
-        q = q + ads
-        q_count = q_count + ads
+        # Query the model
+        q = q.filter(query)
 
 
+    #
+    # col_search = []
+    # # The search value
+    # sv = post_dict.get('search', {})
+    # sv = str(sv.get('value', '')).strip()
+    # if sv!='':
+    #     for n,c in cols.iteritems():
+    #         col_search.append( c + '::text ILIKE %s')
+    #         params.append('%'+sv+'%')
+    #
+    # if col_filters or col_search:
+    #     ads = " WHERE "
+    #     ws = []
+    #     if col_filters:
+    #         ws.append("(" + " AND ".join(col_filters) + ")")
+    #     if col_search:
+    #         ws.append("(" + " OR ".join(col_search) + ")")
+    #
+    #     ads = ads + " AND ".join(ws)
+    #
+    #     q = q + ads
+    #     q_count = q_count + ads
+    #
+    #
+    #
 
     # Treat the ordering of columns
-    sort_cols = []
+    order_cols = []
     for colk, colv in post_dict.get('order', {}).iteritems():
         scol = colv.get('column', 0)
         scol = cols.get(scol)
         if not scol:
             scol = cols[0]
         sdir = colv.get('dir')
-        if sdir not in ['asc','desc']:
-            sdir = 'asc'
-
-        sort_cols.append( scol + ' ' + sdir.upper())
-    if sort_cols:
-        ads = " ORDER BY " + " ,".join(sort_cols)
-        q = q + ads
-
-
-
-    num_filtered = c.fetchone()[0]
-
+        if sdir == 'desc':
+            order_cols.append('-' + scol)
+        else: #asc + fallback
+            order_cols.append(scol)
+    if order_cols:
+        q = q.order_by(*order_cols)
 
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, 10)
@@ -117,14 +153,15 @@ def datatable_query(table_name, post):
         params.append(length)
         params.append(start)
 
-    return (q, params, q_count)
+    return (q,q_count)
 
-class DashboardTableSource(BasicJSONView):
+class ActionablesTableSource(BasicJSONView):
 
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
         GET = self.request.GET.copy()
+
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {
             'draw': draw_val,
@@ -148,7 +185,7 @@ class DashboardTableSource(BasicJSONView):
 
 
             # Build the query for the data, and fetch that stuff
-            q,params, res['recordsFiltered'] = datatable_query(table_name, POST)
+            q,res['recordsFiltered'] = datatable_query(table_name, POST)
             for row in q:
                 res['data'].append(row)
 
@@ -166,7 +203,6 @@ class DashboardTableSource(BasicJSONView):
             # Num of results and total rows
             #TODO enable filtering
             res['recordsTotal'] = res['recordsFiltered']
-
         return res
 
 def index(request):
@@ -174,7 +210,7 @@ def index(request):
         'title' : 'MANTIS Actionables Dashboard',
         'tables' : []
     }
-    for id,table in DASHBOARD_CONTENTS:
+    for id,table in DASHBOARD_CONTENTS.items():
         name = table['name']
         show_type = table['show_type_column']
         content_dict['tables'].append((name,id,show_type))
