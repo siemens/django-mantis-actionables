@@ -21,7 +21,21 @@
 		var tbl_key = $(this).attr('id');
 		if(tbl_key == undefined || tbl_key == '')
 		    return true;
+        var colSearchMap = [];
+        $(this).find("thead th").each(function(index){
+            var col = $(this);
+            var searchable = false;
+            if(col.data("search") === 1){
+                searchable = true;
+            }
+            colSearchMap.push({
+                "bSearchable": searchable, "aTargets": [ index ]
+            })
+        })
+
 		tables[tbl_key] = $(this).DataTable({
+            "aoColumnDefs": colSearchMap,
+            "searching": true,
 		    "processing": false,
 		    "serverSide": true,
 		    "stripeClasses": ["grp-row grp-row-odd", "grp-row grp-row-even"],

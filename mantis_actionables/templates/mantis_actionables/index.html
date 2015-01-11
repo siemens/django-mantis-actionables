@@ -21,24 +21,24 @@
                   <table id="{{ table.1 }}" cellspacing="0" class="grp-sortable result_table" width="100%">
                     <thead>
                       <tr>
-                        <th>Source Timestamp</th>
+                        <th data-search="0">Source Timestamp</th>
                         {% if table.2 %}
-                          <th>SingletonObservableType</th>
+                          <th data-search="1">SingletonObservableType</th>
                         {% endif %}
-                        <th>Value</th>
-                        <th>TLP</th>
-                        <th>STIX Namespace</th>
-                        <th>STIX Name</th>
+                        <th data-search="1">Value</th>
+                        <th data-search="0">TLP</th>
+                        <th data-search="0">STIX Namespace</th>
+                        <th data-search="0">STIX Name</th>
                       </tr>
                     </thead>
                     <tfoot>
                       <tr>
                         <th></th>
                         {% if table.2 %}
-                          <th></th>
+                          <th><select id="{{ table.1 }}_type_filter"></select></th>
                         {% endif %}
                         <th></th>
-                        <th></th>
+                        <th><select id="{{ table.1 }}_tlp_filter"></select></th>
                         <th></th>
                         <th></th>
                       </tr>

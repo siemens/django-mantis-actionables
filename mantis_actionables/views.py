@@ -43,7 +43,6 @@ def getTableColumns(count):
         pass
     return cols
 
-
 def datatable_query(table_name, post):
     post_dict = parser.parse(str(post.urlencode()))
 
@@ -74,22 +73,49 @@ def datatable_query(table_name, post):
     # Treat the filter values (WHERE clause)
     for x in post_dict.items():
         print x
-    col_filters = {}
+    col_filters = []
     for colk, colv in post_dict.get('columns', {}).iteritems():
         srch = colv.get('search', False)
         print srch
         if not srch:
             continue
         srch = srch.get('value', False)
-        print "##############"
 
         if not srch or srch.lower()=='all':
             continue
         # srch should have a value
-        col_filters[(cols[colk+1] + '__contains')] = srch
+        col_filters.append({
+            cols[colk] + '__exact' : srch
+        })
 
     if col_filters:
         queries = [Q(**filter) for filter in col_filters]
+        query = queries.pop()
+
+        # Or the Q object with the ones remaining in the list
+        for item in queries:
+            query &= item
+
+        # Query the model
+        q = q.filter(query)
+
+
+    col_search = []
+    # The search value
+    sv = post_dict.get('search', {})
+    sv = str(sv.get('value', '')).strip()
+    if sv != '':
+        for n,c in cols.iteritems():
+            if post_dict['columns'][n]['searchable'] == "true":
+                col_search.append({
+                    c + '__contains' : sv
+                })
+
+    print "#####################"
+    for x in col_search:
+        print x
+    if col_search:
+        queries = [Q(**filter) for filter in col_search]
         query = queries.pop()
 
         # Or the Q object with the ones remaining in the list
@@ -99,32 +125,6 @@ def datatable_query(table_name, post):
         # Query the model
         q = q.filter(query)
 
-
-    #
-    # col_search = []
-    # # The search value
-    # sv = post_dict.get('search', {})
-    # sv = str(sv.get('value', '')).strip()
-    # if sv!='':
-    #     for n,c in cols.iteritems():
-    #         col_search.append( c + '::text ILIKE %s')
-    #         params.append('%'+sv+'%')
-    #
-    # if col_filters or col_search:
-    #     ads = " WHERE "
-    #     ws = []
-    #     if col_filters:
-    #         ws.append("(" + " AND ".join(col_filters) + ")")
-    #     if col_search:
-    #         ws.append("(" + " OR ".join(col_search) + ")")
-    #
-    #     ads = ads + " AND ".join(ws)
-    #
-    #     q = q + ads
-    #     q_count = q_count + ads
-    #
-    #
-    #
 
     # Treat the ordering of columns
     order_cols = []
@@ -189,16 +189,14 @@ class ActionablesTableSource(BasicJSONView):
             for row in q:
                 res['data'].append(row)
 
-            # # Fetch the column filter values
-            # if draw_val == 1:
-            #     cursor.execute("SELECT DISTINCT object_type FROM mantis_dashboard_%s_view" % table_name)
-            #     res['cols'][table_name + '_object_filter'] = [{'all': 'All'}]
-            #     for col_type in cursor.fetchall():
-            #         res['cols'][table_name + '_object_filter'].append({col_type[0]: col_type[0]})
-            #     res['cols'][table_name + '_namespace_filter'] = [{'all': 'All'}]
-            #     cursor.execute("SELECT DISTINCT namespace FROM mantis_dashboard_%s_view" % table_name)
-            #     for col_type in cursor.fetchall():
-            #         res['cols'][table_name + '_namespace_filter'].append({col_type[0]: col_type[0]})
+            # Fetch the column filter values
+            if draw_val == 1:
+                res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
+                types = DASHBOARD_CONTENTS[table_name]['types']
+                if len(types) > 1:
+                    for type_name in types :
+                        res['cols'][table_name + '_type_filter'].append({type_name: type_name})
+                res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
 
             # Num of results and total rows
             #TODO enable filtering

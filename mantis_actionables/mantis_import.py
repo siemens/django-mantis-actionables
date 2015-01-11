@@ -250,11 +250,10 @@ def process_STIX_Reports(imported_since, imported_until=None):
     if not imported_until:
         imported_until = datetime.datetime.now()
     filter = STIX_REPORT_FAMILY_AND_TYPES[0]
-    matching_stix = InfoObject.objects.filter(#create_timestamp__gte=imported_since,
-                                              #create_timestamp__lte=imported_until,
+    matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
+                                              create_timestamp__lte=imported_until,
                                               iobject_type__name=filter['iobject_type'],
-                                              iobject_family__name=filter['iobject_type_family'],
-                                              id=48)
+                                              iobject_family__name=filter['iobject_type_family'])
     #TODO multiple familys and types concat by OR
 
     #TODO needed??
