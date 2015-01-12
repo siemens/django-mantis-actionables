@@ -25,18 +25,16 @@ def getTableColumns(count):
             1: 'type__name',
             2: 'value',
             3: 'sources__tlp',
-            #TODO replace with MANTIS iobject info
-            4: 'id',
-            5: 'type_id'
+            4: 'sources__top_level_iobject__identifier__namespace__uri',
+            5: 'sources__top_level_iobject__name'
         }
     elif count == 5:
         cols = {
             0: 'sources__timestamp',
             1: 'value',
             2: 'sources__tlp',
-            #TODO replace with MANTIS iobject info
-            3: 'id',
-            4: 'type_id'
+            3: 'sources__top_level_iobject__identifier__namespace__uri',
+            4: 'sources__top_level_iobject__name'
         }
     else:
         #exception, wrong column count

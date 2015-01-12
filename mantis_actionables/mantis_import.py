@@ -22,6 +22,7 @@ import ipaddr, datetime, re
 from django.contrib.contenttypes.models import ContentType
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 from dingos.models import InfoObject,vIO2FValue
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
@@ -249,12 +250,24 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
     if not imported_until:
         imported_until = datetime.datetime.now()
-    filter = STIX_REPORT_FAMILY_AND_TYPES[0]
+    report_filters = []
+    for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
+        report_filters.append({
+            'iobject_type__name' : report_filter['iobject_type']
+        })
+        report_filters.append({
+            'iobject_family__name' : report_filter['iobject_type_family']
+
+        })
+    queries = [Q(**filter) for filter in report_filters]
+    query = queries.pop()
+
+    # Or the Q object with the ones remaining in the list
+    for item in queries:
+        query |= item
     matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                              create_timestamp__lte=imported_until,
-                                              iobject_type__name=filter['iobject_type'],
-                                              iobject_family__name=filter['iobject_type_family'])
-    #TODO multiple familys and types concat by OR
+                                              create_timestamp__lte=imported_until)
+    matching_stix = matching_stix.filter(query)
 
     #TODO needed??
     skip_terms = [{'term':'Related','operator':'icontains'}]
