@@ -6,10 +6,13 @@ from django.db.models import Q
 
 from querystring_parser import parser
 
+import datetime
+
 from dingos.view_classes import BasicJSONView
+from dingos.models import IdentifierNameSpace
 
 from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable
+from .models import SingletonObservable,Source
 from .mantis_import import singleton_observable_types
 
 def safe_cast(val, to_type, default=None):
@@ -21,18 +24,18 @@ def safe_cast(val, to_type, default=None):
 def getTableColumns(count):
     if count == 6:
         cols = {
-            0: 'sources__timestamp',
-            1: 'type__name',
-            2: 'value',
-            3: 'sources__tlp',
+            0: 'sources__tlp',
+            1: 'sources__timestamp',
+            2: 'type__name',
+            3: 'value',
             4: 'sources__top_level_iobject__identifier__namespace__uri',
             5: 'sources__top_level_iobject__name'
         }
     elif count == 5:
         cols = {
-            0: 'sources__timestamp',
-            1: 'value',
-            2: 'sources__tlp',
+            0: 'sources__tlp',
+            1: 'sources__timestamp',
+            2: 'value',
             3: 'sources__top_level_iobject__identifier__namespace__uri',
             4: 'sources__top_level_iobject__name'
         }
@@ -64,9 +67,10 @@ def datatable_query(table_name, post):
                 continue
         if type_ids:
             q = base.filter(type_id__in=type_ids).values_list(*(cols.values()))
-            q_count = base.filter(type_id__in=type_ids).count()
+            #sources__id for join on sources table
+            q_count_all = base.filter(type_id__in=type_ids).values_list('sources__id').count()
         else:
-            return (base.none(),0)
+            return (base.none(),0,0)
 
     # Treat the filter values (WHERE clause)
     for x in post_dict.items():
@@ -139,6 +143,8 @@ def datatable_query(table_name, post):
     if order_cols:
         q = q.order_by(*order_cols)
 
+
+    q_count_filtered = q.count()
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, 10)
     if length<-1:
@@ -151,7 +157,7 @@ def datatable_query(table_name, post):
         params.append(length)
         params.append(start)
 
-    return (q,q_count)
+    return (q,q_count_all,q_count_filtered)
 
 class ActionablesTableSource(BasicJSONView):
 
@@ -169,6 +175,7 @@ class ActionablesTableSource(BasicJSONView):
             'error': '',
             'cols': {}
         }
+        test = {}
 
 
         # POST has the following parameters
@@ -183,8 +190,11 @@ class ActionablesTableSource(BasicJSONView):
 
 
             # Build the query for the data, and fetch that stuff
-            q,res['recordsFiltered'] = datatable_query(table_name, POST)
+            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST)
             for row in q:
+                row = list(row)
+                row[0] = Source.TLP_COLOR_CSS[row[0]]
+                row[1] = datetime.datetime.date(row[1]).strftime('%d-%m-%Y %X')
                 res['data'].append(row)
 
             # Fetch the column filter values
@@ -195,10 +205,11 @@ class ActionablesTableSource(BasicJSONView):
                     for type_name in types :
                         res['cols'][table_name + '_type_filter'].append({type_name: type_name})
                 res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
-
-            # Num of results and total rows
-            #TODO enable filtering
-            res['recordsTotal'] = res['recordsFiltered']
+                res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
+                namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))
+                if len(namespaces) > 1:
+                    for ns in namespaces:
+                        res['cols'][table_name + '_ns_filter'].append({ns : ns})
         return res
 
 def index(request):

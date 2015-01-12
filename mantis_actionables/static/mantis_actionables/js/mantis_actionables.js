@@ -21,20 +21,26 @@
 		var tbl_key = $(this).attr('id');
 		if(tbl_key == undefined || tbl_key == '')
 		    return true;
-        var colSearchMap = [];
+        var colDef = [];
         $(this).find("thead th").each(function(index){
             var col = $(this);
             var searchable = false;
             if(col.data("search") === 1){
                 searchable = true;
             }
-            colSearchMap.push({
-                "bSearchable": searchable, "aTargets": [ index ]
+            colDef.push({
+                "searchable" : searchable, "targets" : index
             })
-        })
+        });
+        colDef.push({
+            "width" : "50px", "targets": 1
+        });
+
+        console.log(colDef);
+
 
 		tables[tbl_key] = $(this).DataTable({
-            "aoColumnDefs": colSearchMap,
+            "columnDefs" : colDef,
             "searching": true,
 		    "processing": false,
 		    "serverSide": true,

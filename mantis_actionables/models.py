@@ -100,6 +100,14 @@ class Source(models.Model):
                 (TLP_RED,"Red"),
     )
 
+    TLP_COLOR_CSS = {
+        TLP_UNKOWN : "gray",
+        TLP_WHITE : "white",
+        TLP_GREEN : "green",
+        TLP_AMBER : "amber",
+        TLP_RED : "red"
+    }
+
     tlp = models.SmallIntegerField(choices=TLP_KIND)
 
     url = models.URLField(blank=True)
