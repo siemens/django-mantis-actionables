@@ -17,21 +17,20 @@
             <div class="grp-row grp-cells">
               {% for table in tables %}
                 <div class="grp-cell result_box">
-                  <h2 class="result_head clearfix"> {{ table.0 }} <span class="res_num"></span></h2>
+                  <h2 class="result_head clearfix"> {{ table. <span class="res_num"></span></h2>
                   <table id="{{ table.1 }}" cellspacing="0" class="grp-sortable result_table" width="100%">
                     <thead>
                       <tr>
                         <th data-search="0">TLP</th>
                         <th data-search="0">Source Timestamp</th>
                         {% if table.2 %}
-                          <th data-search="1">SingletonObservableType</th>
+                          <th data-search="1">Typ</th>
                         {% endif %}
                         <th data-search="1">Value</th>
                         <th data-search="0">STIX Namespace</th>
                         <th data-search="0">STIX Name</th>
                       </tr>
                     </thead>
-
                     <tfoot>
                       <tr>
                         <td>

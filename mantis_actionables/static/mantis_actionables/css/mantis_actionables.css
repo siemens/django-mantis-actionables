@@ -82,3 +82,12 @@ table.result_table .tbl_hide {
 	margin: 0;
     }
 }
+
+/* TLP display */
+.white {
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    background-color: rgba(255, 0, 0, 0.78);
+    border-radius: 100%;
+}

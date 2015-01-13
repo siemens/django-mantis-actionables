@@ -32,14 +32,21 @@
                 "searchable" : searchable, "targets" : index
             })
         });
+
+        //change rendering for first (tlp) column in order to display the tlp color
         colDef.push({
-            "width" : "50px", "targets": 1
-        });
-
-        console.log(colDef);
-
+            "render":  function ( data, type, row ) {
+                    return '<div class=\"' + data + '\"></div>';
+                },
+                "targets": 0
+        })
+        colDef.push({
+            "width": "20px",
+            "targets": 0
+        })
 
 		tables[tbl_key] = $(this).DataTable({
+            "autoWidth": true,
             "columnDefs" : colDef,
             "searching": true,
 		    "processing": false,
@@ -53,7 +60,7 @@
 			    "table_type": tbl_key
 			},
 			dataSrc: function(data){
-			    // Fill the selectors
+			    // Fill the selectors for filters
 			    $.each($('tfoot select',tbl), function(i,v){
 				var options = data.cols[$(v).attr('id')];
 				if(options == undefined) return true;
@@ -62,10 +69,9 @@
 					$(v).append($('<option></option>').text(v2).attr('value', v1[v2]));
 				    });
 				});
-				// bind the change event
+				// bind the change event for filters
 				$(this).on('change', function(e){
 				    var colidx = $(this).parents('tr').first().children().index($(this).parent());
-				    //dt.column(colidx).search($(this).val()).draw();
 				    tables[tbl_key].column(colidx).search($(this).val()).draw();
 				});
 			    });
@@ -76,6 +82,11 @@
 				hl_count = data.recordsFiltered + ' of ' + hl_count;
 			    $(tbl).parents('.result_box').first().find('.res_num').first().text('('+hl_count+')');
 
+                // get and display TLP color
+                if(data.draw_val === 1){
+                    var tlp_map = data.tlp_map;
+                }
+
 			    return data.data;
 			}
 		    },
@@ -84,8 +95,12 @@
 			    $('td', row).eq($(this).index()).addClass('tbl_hide');
 			});
 
+            $('table').each(function(index){
+               $(this)
+            });
 
-			//
+
+
 
 			// Add cell class to those requiring it
 			// if ( data[5].replace(/[\$,]/g, '') * 1 > 4000 ) {

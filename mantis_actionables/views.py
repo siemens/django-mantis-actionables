@@ -21,12 +21,35 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
+def getColumns(tableId):
+    table_info = DASHBOARD_CONTENTS.get(tableId,None)
+    cols = {}
+    if table_info and table_info['show_type_column']:
+        cols.update({
+            0: ('sources__tlp','TLP'),
+            1: ('sources__timestamp','Source TS'),
+            2: ('value','Value'),
+            3: ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace'),
+            4: ('sources__top_level_iobject__name','STIX Name')
+        })
+
+    else:
+        cols.update({
+            0: ('sources__tlp','TLP'),
+            1: ('sources__timestamp','Source TS'),
+            2: ('type__name','Type'),
+            3: ('value','Value'),
+            4: ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace'),
+            5: ('sources__top_level_iobject__name','STIX Name')
+        })
+    return cols
+
 def getTableColumns(count):
     if count == 6:
         cols = {
             0: 'sources__tlp',
             1: 'sources__timestamp',
-            2: 'type__name',
+
             3: 'value',
             4: 'sources__top_level_iobject__identifier__namespace__uri',
             5: 'sources__top_level_iobject__name'
@@ -217,8 +240,6 @@ def index(request):
         'title' : 'MANTIS Actionables Dashboard',
         'tables' : []
     }
-    for id,table in DASHBOARD_CONTENTS.items():
-        name = table['name']
-        show_type = table['show_type_column']
-        content_dict['tables'].append((name,id,show_type))
+    for id in DASHBOARD_CONTENTS:
+        content_dict['tables'].append(getColumns(id))
     return render_to_response('mantis_actionables/index.html', content_dict, context_instance=RequestContext(request))
