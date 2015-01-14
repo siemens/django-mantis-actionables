@@ -25,7 +25,7 @@
         $(this).find("thead th").each(function(index){
             var col = $(this);
             var searchable = false;
-            if(col.data("search") === 1){
+            if(col.data("isearch") === 1){
                 searchable = true;
             }
             colDef.push({
@@ -34,16 +34,12 @@
         });
 
         //change rendering for first (tlp) column in order to display the tlp color
-        colDef.push({
+        /*colDef.push({
             "render":  function ( data, type, row ) {
                     return '<div class=\"' + data + '\"></div>';
                 },
                 "targets": 0
-        })
-        colDef.push({
-            "width": "20px",
-            "targets": 0
-        })
+        })*/
 
 		tables[tbl_key] = $(this).DataTable({
             "autoWidth": true,
@@ -98,14 +94,6 @@
             $('table').each(function(index){
                $(this)
             });
-
-
-
-
-			// Add cell class to those requiring it
-			// if ( data[5].replace(/[\$,]/g, '') * 1 > 4000 ) {
-			//     $('td', row).eq(5).addClass('highlight');
-			// }
 		    },
 	    	    initComplete: function(settings, json) {
 	    		var pthis = this;
@@ -117,17 +105,6 @@
 				pthis.fnFilter(ithis.get(0).value);
 			    }, 500));
 	    	    	});
-			var exp = $('<button>Export this data</button>').button({
-			    icons: {
-				primary: 'ui-icon-arrowthickstop-1-e'
-			    },
-			    text: false
-			}).click(function(){
-			    var params = pthis.oApi._fnAjaxParameters(pthis.dataTable().fnSettings());
-			    params.table_type = tbl_key;
-			    var qp = decodeURIComponent($.param(params));
-			    var ifr = $('<iframe style="display:none;"></iframe>').attr('src', 'tbl_data_export?'+qp).appendTo($('body'));
-			});
 			var rst = $('<button>Reset filter</button>').button({
 			    icons: {
 				primary: 'ui-icon-close'
@@ -141,7 +118,6 @@
 			s_cont.append(li);
 			s_cont.append(s_inp);
 			s_cont.append(rst);
-			s_cont.append(exp);
 
 	    		$(this).parents('.result_box').first().find('.result_head').first().prepend(s_cont);
 
@@ -154,9 +130,6 @@
 		    tpi.css( 'display', processing ? 'block' : 'none' );
 		} );
 	    });
-
-
-
 	});
 
     });

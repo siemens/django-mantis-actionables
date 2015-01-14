@@ -15,6 +15,33 @@ from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,Source
 from .mantis_import import singleton_observable_types
 
+#init column_dicts
+cols_cut = {}
+cols_all = {}
+
+#cols to display in tables (query_select_row,col_name,searchable)
+COLS_TO_DISPLAY = [
+    ('sources__tlp','TLP','0'),
+    ('sources__timestamp','Source TS','0'),
+    ('value','Value','1'),
+    ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
+    ('sources__top_level_iobject__name','STIX Name','0')
+]
+
+#optinal columns to display (index,query_select_row,col_name)
+OPT_COLS = [
+    (2,('type__name','Type','1')),
+]
+
+def fillColDict(colsDict,cols):
+    for index,col in zip(range(len(cols)),cols):
+        colsDict[index] = col
+
+fillColDict(cols_cut,COLS_TO_DISPLAY)
+for index,content in OPT_COLS:
+    COLS_TO_DISPLAY.insert(index,content)
+fillColDict(cols_all,COLS_TO_DISPLAY)
+
 def safe_cast(val, to_type, default=None):
     try:
         return to_type(val)
@@ -23,49 +50,12 @@ def safe_cast(val, to_type, default=None):
 
 def getColumns(tableId):
     table_info = DASHBOARD_CONTENTS.get(tableId,None)
-    cols = {}
-    if table_info and table_info['show_type_column']:
-        cols.update({
-            0: ('sources__tlp','TLP'),
-            1: ('sources__timestamp','Source TS'),
-            2: ('value','Value'),
-            3: ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace'),
-            4: ('sources__top_level_iobject__name','STIX Name')
-        })
-
-    else:
-        cols.update({
-            0: ('sources__tlp','TLP'),
-            1: ('sources__timestamp','Source TS'),
-            2: ('type__name','Type'),
-            3: ('value','Value'),
-            4: ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace'),
-            5: ('sources__top_level_iobject__name','STIX Name')
-        })
-    return cols
-
-def getTableColumns(count):
-    if count == 6:
-        cols = {
-            0: 'sources__tlp',
-            1: 'sources__timestamp',
-
-            3: 'value',
-            4: 'sources__top_level_iobject__identifier__namespace__uri',
-            5: 'sources__top_level_iobject__name'
-        }
-    elif count == 5:
-        cols = {
-            0: 'sources__tlp',
-            1: 'sources__timestamp',
-            2: 'value',
-            3: 'sources__top_level_iobject__identifier__namespace__uri',
-            4: 'sources__top_level_iobject__name'
-        }
-    else:
-        #exception, wrong column count
-        pass
-    return cols
+    if table_info:
+        if table_info['show_type_column']:
+            return cols_all
+        else:
+            return cols_cut
+    return {}
 
 def datatable_query(table_name, post):
     post_dict = parser.parse(str(post.urlencode()))
@@ -73,7 +63,8 @@ def datatable_query(table_name, post):
     # Collect prepared statement parameters in here
     params = []
 
-    cols = getTableColumns(max(post_dict['columns'])+1)
+    cols = getColumns(table_name)
+    cols = dict((x, y[0]) for x, y in cols.items())
 
     # Base query
     table = DASHBOARD_CONTENTS[table_name]
@@ -96,12 +87,9 @@ def datatable_query(table_name, post):
             return (base.none(),0,0)
 
     # Treat the filter values (WHERE clause)
-    for x in post_dict.items():
-        print x
     col_filters = []
     for colk, colv in post_dict.get('columns', {}).iteritems():
         srch = colv.get('search', False)
-        print srch
         if not srch:
             continue
         srch = srch.get('value', False)
@@ -136,9 +124,6 @@ def datatable_query(table_name, post):
                     c + '__contains' : sv
                 })
 
-    print "#####################"
-    for x in col_search:
-        print x
     if col_search:
         queries = [Q(**filter) for filter in col_search]
         query = queries.pop()
@@ -187,7 +172,6 @@ class ActionablesTableSource(BasicJSONView):
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
-        GET = self.request.GET.copy()
 
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {
@@ -198,8 +182,6 @@ class ActionablesTableSource(BasicJSONView):
             'error': '',
             'cols': {}
         }
-        test = {}
-
 
         # POST has the following parameters
         # http://www.datatables.net/manual/server-side#Configuration
@@ -240,6 +222,6 @@ def index(request):
         'title' : 'MANTIS Actionables Dashboard',
         'tables' : []
     }
-    for id in DASHBOARD_CONTENTS:
-        content_dict['tables'].append(getColumns(id))
+    for id,table_info in DASHBOARD_CONTENTS.items():
+        content_dict['tables'].append((table_info['name'],getColumns(id)))
     return render_to_response('mantis_actionables/index.html', content_dict, context_instance=RequestContext(request))

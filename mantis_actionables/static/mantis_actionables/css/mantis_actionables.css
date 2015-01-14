@@ -84,10 +84,11 @@ table.result_table .tbl_hide {
 }
 
 /* TLP display */
-.white {
+/*.white {
     margin: 0;
     width: 15px;
     height: 15px;
     background-color: rgba(255, 0, 0, 0.78);
     border-radius: 100%;
-}
+}*/
+
