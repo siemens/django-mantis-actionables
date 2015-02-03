@@ -38,7 +38,6 @@ class Action(models.Model):
     comment = models.TextField(blank=True)
 
 
-
 class Source(models.Model):
     timestamp = models.DateTimeField()
 
@@ -120,8 +119,6 @@ class Source(models.Model):
     content_type = models.ForeignKey(ContentType)
     object_id = models.PositiveIntegerField()
     yielded = generic.GenericForeignKey('content_type', 'object_id')
-
-
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
 NULL_TIME = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -133,7 +130,6 @@ def get_inf_time():
 def get_null_time():
 
     return NULL_TIME
-
 
 class Status(models.Model):
 
@@ -148,6 +144,10 @@ class Status(models.Model):
 
     active_from = models.DateTimeField(default = get_null_time)
     active_to = models.DateTimeField(default = get_inf_time)
+
+    #Field to store tags, seperated by ',', when Django 1.8 released replaced by ArrayField
+    #https://docs.djangoproject.com/en/dev/ref/contrib/postgres/fields
+    tags = models.TextField()
 
     PRIORITY_UNCERTAIN = 0
     PRIORITY_LOW = 10
@@ -167,8 +167,6 @@ class Status(models.Model):
                                       help_text = "If set to uncertain, it is up to the receiving system"
                                                   "to derive a priority from the additional info provided"
                                                   "in the source information.")
-
-
 
 
 class Status2X(models.Model):
@@ -192,10 +190,22 @@ class Status2X(models.Model):
     object_id = models.PositiveIntegerField()
     marked = generic.GenericForeignKey('content_type', 'object_id')
 
+def createStatus(tags):
+    tags = ','.join(tags)
+    new_status = Status(false_positive=False,active=True,tags=tags,priority=Status.PRIORITY_UNCERTAIN)
+    new_status.save()
+    return new_status
+
+def updateStatus(status_obj,tags):
+    tags = ','.join(tags)
+    new_status, created = Status.objects.get_or_create(false_positiv=status_obj.false_positive,active=status_obj.active,tags=tags,priority=status_obj.priority)
+    return (new_status,created)
+
 
 class SingletonObservableType(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+
 
 class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
@@ -211,6 +221,7 @@ class SingletonObservable(models.Model):
 
 class SignatureType(models.Model):
     name = models.CharField(max_length=255)
+
 
 class IDSSignature(models.Model):
     type = models.ForeignKey(SignatureType)

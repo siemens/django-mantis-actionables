@@ -26,7 +26,6 @@ class Command(BaseCommand):
     """
     This class implements the command for importing data from a mantis exporter
     """
-    #TODO finish doc --> taking from until as date time strings from command line.
     args = '<from_ts until_ts> using data time strings'
     help = 'create actionables out of the result of a mantis exporter, e.g. fqdn'
 

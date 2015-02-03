@@ -9,8 +9,8 @@ import mantis_actionables.models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('dingos', '0004_modify_vIO2FValue_view'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('dingos', '0004_AddTaggingHistory'),
         ('contenttypes', '0001_initial'),
     ]
 
@@ -106,6 +106,7 @@ class Migration(migrations.Migration):
                 ('active', models.BooleanField(default=True, help_text=b'If true, the associated information is to be used for detection')),
                 ('active_from', models.DateTimeField(default=mantis_actionables.models.get_null_time)),
                 ('active_to', models.DateTimeField(default=mantis_actionables.models.get_inf_time)),
+                ('tags', models.TextField()),
                 ('priority', models.SmallIntegerField(help_text=b'If set to uncertain, it is up to the receiving systemto derive a priority from the additional info providedin the source information.', choices=[(0, b'Uncertain'), (10, b'Low'), (20, b'Medium'), (30, b'High'), (40, b'Hot')])),
             ],
             options={

@@ -24,12 +24,12 @@ from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 
-from dingos.models import InfoObject,vIO2FValue
+from dingos.models import InfoObject,Fact
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
 from dingos.graph_traversal import follow_references
 
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES
-from .models import SingletonObservable, SingletonObservableType, Source
+from .models import SingletonObservable, SingletonObservableType, Source, createStatus, Status, Status2X, Action, updateStatus
 
 #build a name to pk mapping for SingletonObservableTypes on server startup
 singleton_observable_types = {}
@@ -244,10 +244,6 @@ def process_STIX_Reports(imported_since, imported_until=None):
         - leave ORIGIN set to uncertain for now.
 
     """
-    print "color map"
-    print tlp_color_map
-
-
     if not imported_until:
         imported_until = datetime.datetime.now()
     report_filters = []
@@ -265,12 +261,19 @@ def process_STIX_Reports(imported_since, imported_until=None):
     # Or the Q object with the ones remaining in the list
     for item in queries:
         query |= item
-    matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                              create_timestamp__lte=imported_until)
-    matching_stix = matching_stix.filter(query)
+    matching_stix = InfoObject.objects.filter(#create_timestamp__gte=imported_since,
+                                              #create_timestamp__lte=imported_until,
+                                              id__in=[10840])
+    matching_stix = list(matching_stix.filter(query))
 
     #TODO needed??
     skip_terms = [{'term':'Related','operator':'icontains'}]
+
+    tag_iobj_cache = {}
+    tag_fact_cache = {}
+
+    action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+
     for stix in matching_stix:
         graph= follow_references([stix.id],
                                  skip_terms = skip_terms,
@@ -284,7 +287,36 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                 )
             (content_type,results) = postprocessor.export(override_columns = 'ALMOST_ALL', format='dict')
             if results:
-                iobject_pks = [result['object.pk'] for result in results]
+                iobj_pks_lookup = set()
+                if not tag_info_cache:
+                    #retrieve all tags for matching stix reports
+                    iobj_pks_lookup.update([stix.id for stix in matching_stix])
+                #retrieve all tags for parent iobjects of exported facts and exported facts
+                fact_pks_lookup = set()
+                for result in results:
+                    iobj_pks_lookup.update(result['object.pk'])
+                    fact_pks_lookup.update(result['fact.pk'])
+
+                iobj_pks_lookup = iobj_pks_lookup - set(tag_iobj_cache.keys())
+                fact_pks_lookup = fact_pks_lookup - set(tag_fact_cache.keys())
+
+                #TODO maybe refactor with dingos.views.getTags()
+                cols = ['id','tag_through__tag__name']
+                tags_iobj_q = list(InfoObject.objects.filter(id__in = iobj_pks_lookup).filter(tag_through__isnull=False).values(*cols))
+                for tag in tags_iobj_q:
+                    tag_list = tag_iobj_cache.setdefault(tag['id'],[])
+                    tag_list.append(tag['tag_through__tag__name'])
+
+                tag_fact_q = list(Fact.objects.filter(id__in = fact_pks_lookup).filter(tag_through__isnull=False).values(*cols))
+                for tag in tag_fact_q:
+                    tag_list = tag_fact_cache.setdefault(tag['id'],[])
+                    tag_list.append(tag['tag_through__tag__name'])
+
+
+
+
+                raise Exception('STOP')
+
                 select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
                 color_qs = InfoObject.objects.filter(id__in=iobject_pks)\
                     .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure', marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
@@ -307,11 +339,31 @@ def process_STIX_Reports(imported_since, imported_until=None):
                         singleton_observable_types[type] = obj.pk
                         type_pk = obj.pk
 
-                    obj, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
+                    observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
+
+                    tags = set()
+                    tags.update(tag_iobj_cache[iobj_pk])
+                    tags.update(tag_iobj_cache[stix.id])
+                    tags.update(tag_fact_cache[fact_pk])
+                    tags = list(tags)
+                    tags.sort()
+
                     if created:
                         print "singleton created (%s,%s)" % (type,value)
+                        status = createStatus(tags)
+                        status2x = Status2X(action=action,status=status,active=True,timestamp=datetime.datetime.now(),marked=observable)
+                        status2x.save()
+
                     else:
                         print "singleton not created, already in database"
+                        status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
+                        status = status2x.status
+                        new_status,created = updateStatus(status,tags)
+                        if created or new_status.id != status_obj.id:
+                            status2x.active = False
+                            status2x.save()
+                            status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=datetime.datetime.now(),marked=observable)
+                            status2x_new.save()
 
                     obj, created = Source.objects.get_or_create(timestamp=datetime.datetime.now(),
                                                                 iobject_id=iobj_pk,
