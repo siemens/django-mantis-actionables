@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('dingos', '0004_AddTaggingHistory'),
+        ('dingos', '0004_modify_vIO2FValue_view'),
         ('contenttypes', '0001_initial'),
     ]
 

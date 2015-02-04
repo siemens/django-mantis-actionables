@@ -198,7 +198,7 @@ def createStatus(tags):
 
 def updateStatus(status_obj,tags):
     tags = ','.join(tags)
-    new_status, created = Status.objects.get_or_create(false_positiv=status_obj.false_positive,active=status_obj.active,tags=tags,priority=status_obj.priority)
+    new_status, created = Status.objects.get_or_create(false_positive=status_obj.false_positive,active=status_obj.active,tags=tags,priority=status_obj.priority)
     return (new_status,created)
 
 

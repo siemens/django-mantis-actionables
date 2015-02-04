@@ -272,7 +272,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     tag_iobj_cache = {}
     tag_fact_cache = {}
 
-    action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+    action = Action.objects.get_or_create(user=None,comment="Actionables Import")[0]
 
     for stix in matching_stix:
         graph= follow_references([stix.id],
@@ -285,40 +285,41 @@ def process_STIX_Reports(imported_since, imported_until=None):
             postprocessor = postprocessor_class(graph=graph,
                                                 query_mode='vIO2FValue',
                                                 )
-            (content_type,results) = postprocessor.export(override_columns = 'ALMOST_ALL', format='dict')
+            (content_type,results) = postprocessor.export(override_columns='ALMOST_ALL', format='dict')
+
+            print results
+
             if results:
                 iobj_pks_lookup = set()
-                if not tag_info_cache:
+                parent_iobj_pks = set()
+                if not tag_iobj_cache:
                     #retrieve all tags for matching stix reports
                     iobj_pks_lookup.update([stix.id for stix in matching_stix])
                 #retrieve all tags for parent iobjects of exported facts and exported facts
                 fact_pks_lookup = set()
                 for result in results:
-                    iobj_pks_lookup.update(result['object.pk'])
-                    fact_pks_lookup.update(result['fact.pk'])
+                    parent_iobj_pks.add(result['object.pk'])
+                    iobj_pks_lookup.add(result['object.pk'])
+                    fact_pks_lookup.add(result['fact.pk'])
 
                 iobj_pks_lookup = iobj_pks_lookup - set(tag_iobj_cache.keys())
                 fact_pks_lookup = fact_pks_lookup - set(tag_fact_cache.keys())
 
                 #TODO maybe refactor with dingos.views.getTags()
-                cols = ['id','tag_through__tag__name']
-                tags_iobj_q = list(InfoObject.objects.filter(id__in = iobj_pks_lookup).filter(tag_through__isnull=False).values(*cols))
+                cols = ['id','identifier__tag_through__tag__name']
+                tags_iobj_q = list(InfoObject.objects.filter(id__in = iobj_pks_lookup).filter(identifier__tag_through__isnull=False).values(*cols))
                 for tag in tags_iobj_q:
                     tag_list = tag_iobj_cache.setdefault(tag['id'],[])
-                    tag_list.append(tag['tag_through__tag__name'])
+                    tag_list.append(tag['identifier__tag_through__tag__name'])
 
+                cols = ['id','tag_through__tag__name']
                 tag_fact_q = list(Fact.objects.filter(id__in = fact_pks_lookup).filter(tag_through__isnull=False).values(*cols))
                 for tag in tag_fact_q:
                     tag_list = tag_fact_cache.setdefault(tag['id'],[])
                     tag_list.append(tag['tag_through__tag__name'])
 
-
-
-
-                raise Exception('STOP')
-
                 select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
-                color_qs = InfoObject.objects.filter(id__in=iobject_pks)\
+                color_qs = InfoObject.objects.filter(id__in=parent_iobj_pks)\
                     .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure', marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
                     .values_list(*select_columns)
                 iobj_to_color = {}
@@ -342,9 +343,9 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
 
                     tags = set()
-                    tags.update(tag_iobj_cache[iobj_pk])
-                    tags.update(tag_iobj_cache[stix.id])
-                    tags.update(tag_fact_cache[fact_pk])
+                    tags.update(tag_iobj_cache.get(iobj_pk,[]))
+                    tags.update(tag_iobj_cache.get(stix.id,[]))
+                    tags.update(tag_fact_cache.get(fact_pk,[]))
                     tags = list(tags)
                     tags.sort()
 
@@ -359,7 +360,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
                         status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
                         status = status2x.status
                         new_status,created = updateStatus(status,tags)
-                        if created or new_status.id != status_obj.id:
+                        if created or new_status.id != status.id:
                             status2x.active = False
                             status2x.save()
                             status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=datetime.datetime.now(),marked=observable)
@@ -372,7 +373,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                                 top_level_iobject=stix,
                                                                 origin=Source.ORIGIN_UNCERTAIN,
                                                                 tlp=tlp_color_map.get(iobj_to_color.get(iobj_pk,None),Source.TLP_UNKOWN),
-                                                                object_id=obj.id,
+                                                                object_id=observable.id,
                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
                                                                 )
 
