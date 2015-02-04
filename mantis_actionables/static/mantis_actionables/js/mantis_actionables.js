@@ -50,7 +50,7 @@
 		    "stripeClasses": ["grp-row grp-row-odd", "grp-row grp-row-even"],
 		    "order": [[0,"desc"]],
 		    "ajax": {
-			url: 'tbl_data',
+			url: '/mantis/actionables/tbl_data/'  + view,
 			type: 'POST',
 			data: {
 			    "table_type": tbl_key

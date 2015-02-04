@@ -15,32 +15,12 @@ from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,Source
 from .mantis_import import singleton_observable_types
 
-#init column_dicts
-cols_cut = {}
-cols_all = {}
-
-#cols to display in tables (query_select_row,col_name,searchable)
-COLS_TO_DISPLAY = [
-    ('sources__tlp','TLP','0'),
-    ('sources__timestamp','Source TS','0'),
-    ('value','Value','1'),
-    ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-    ('sources__top_level_iobject__name','STIX Name','0')
-]
-
-#optinal columns to display (index,query_select_row,col_name)
-OPT_COLS = [
-    (2,('type__name','Type','1')),
-]
+#init column_dict
+COLS = {}
 
 def fillColDict(colsDict,cols):
     for index,col in zip(range(len(cols)),cols):
         colsDict[index] = col
-
-fillColDict(cols_cut,COLS_TO_DISPLAY)
-for index,content in OPT_COLS:
-    COLS_TO_DISPLAY.insert(index,content)
-fillColDict(cols_all,COLS_TO_DISPLAY)
 
 def safe_cast(val, to_type, default=None):
     try:
@@ -48,26 +28,23 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def getColumns(tableId):
-    table_info = DASHBOARD_CONTENTS.get(tableId,None)
-    if table_info:
-        if table_info['show_type_column']:
-            return cols_all
-        else:
-            return cols_cut
-    return {}
-
-def datatable_query(table_name, post):
+def datatable_query(table_name, post, **kwargs):
     post_dict = parser.parse(str(post.urlencode()))
 
     # Collect prepared statement parameters in here
     params = []
 
-    cols = getColumns(table_name)
+    table = DASHBOARD_CONTENTS[table_name]
+
+    cols = kwargs.pop('cols')
+    if not table['show_type_column']:
+        cols = cols['cut']
+    else:
+        cols = cols['all']
+
     cols = dict((x, y[0]) for x, y in cols.items())
 
     # Base query
-    table = DASHBOARD_CONTENTS[table_name]
     if table['basis'] == 'SingletonObservable':
         base = SingletonObservable.objects
         types = table['types']
@@ -168,6 +145,29 @@ def datatable_query(table_name, post):
     return (q,q_count_all,q_count_filtered)
 
 class ActionablesTableSource(BasicJSONView):
+    curr_cols = COLS.setdefault('standard',{}).copy()
+    if not curr_cols:
+        #init default column_dicts
+        cols_cut = curr_cols.setdefault('cut',{})
+        cols_all = curr_cols.setdefault('all',{})
+
+        #cols to display in tables (query_select_row,col_name,searchable)
+        COLS_TO_DISPLAY = [
+            ('sources__tlp','TLP','0'),
+            ('sources__timestamp','Source TS','0'),
+            ('value','Value','1'),
+            ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
+            ('sources__top_level_iobject__name','STIX Name','0')
+        ]
+
+        #optinal columns to display (index,query_select_row,col_name,searchable)
+        OPT_COLS = [
+            (2,('type__name','Type','1')),]
+
+        fillColDict(cols_cut,COLS_TO_DISPLAY)
+        for index,content in OPT_COLS:
+            COLS_TO_DISPLAY.insert(index,content)
+        fillColDict(cols_all,COLS_TO_DISPLAY)
 
     @property
     def returned_obj(self):
@@ -191,11 +191,9 @@ class ActionablesTableSource(BasicJSONView):
 
         table_name = POST.get('table_type')
         if table_name in DASHBOARD_CONTENTS.keys():
-
-
-
             # Build the query for the data, and fetch that stuff
-            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST)
+            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, cols=self.curr_cols)
+
             for row in q:
                 row = list(row)
                 row[0] = Source.TLP_COLOR_CSS[row[0]]
@@ -217,11 +215,45 @@ class ActionablesTableSource(BasicJSONView):
                         res['cols'][table_name + '_ns_filter'].append({ns : ns})
         return res
 
-def index(request):
+
+class ActionablesTableSourceStatus(ActionablesTableSource):
+    filter = [{
+        'status_thru__status__active' : True
+    }]
+    select_related = ['status_thru__status']
+    additional_columns = [
+        ('status_thru__status__tags','Tags','1')
+    ]
+
+
+def imports(request):
     content_dict = {
-        'title' : 'MANTIS Actionables Dashboard',
+        'title' : 'Imported Observables',
         'tables' : []
     }
     for id,table_info in DASHBOARD_CONTENTS.items():
-        content_dict['tables'].append((table_info['name'],getColumns(id)))
-    return render_to_response('mantis_actionables/index.html', content_dict, context_instance=RequestContext(request))
+        if not table_info['show_type_column']:
+            content_dict['tables'].append((table_info['name'],COLS['standard']['all']))
+        else:
+            content_dict['tables'].append((table_info['name'],COLS['standard']['cut']))
+    return render_to_response('mantis_actionables/base.html', content_dict, context_instance=RequestContext(request))
+
+def status_infos(request):
+    content_dict = {
+        'title' : 'Imported Observables - Status View',
+        'tables' : []
+    }
+
+    additional_columns = [
+            ('status_thru__status__tags','Tags','1')
+        ]
+
+    for id,table_info in DASHBOARD_CONTENTS.items():
+        cols = getColumns(id)
+        print "------------"
+        print cols
+
+        for col in additional_columns:
+            cols[len(cols)] = col
+        content_dict['tables'].append((table_info['name'],cols))
+    return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))

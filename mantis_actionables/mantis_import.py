@@ -360,24 +360,27 @@ def process_STIX_Reports(imported_since, imported_until=None):
                         status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
                         status = status2x.status
                         new_status,created = updateStatus(status,tags)
+
                         if created or new_status.id != status.id:
                             status2x.active = False
                             status2x.save()
                             status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=datetime.datetime.now(),marked=observable)
                             status2x_new.save()
 
-                    obj, created = Source.objects.get_or_create(timestamp=datetime.datetime.now(),
-                                                                iobject_id=iobj_pk,
+                    source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
                                                                 iobject_fact_id=fact_pk,
                                                                 iobject_factvalue_id=fact_value_pk,
                                                                 top_level_iobject=stix,
                                                                 origin=Source.ORIGIN_UNCERTAIN,
-                                                                tlp=tlp_color_map.get(iobj_to_color.get(iobj_pk,None),Source.TLP_UNKOWN),
                                                                 object_id=observable.id,
                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
                                                                 )
 
-                    if created:
-                        print "source object created (%s,%s)" % (iobj_pk,iobj_to_color.get(iobj_pk,'TLP_UNKOWN'))
-                    else:
-                        print "source not created, already in database"
+                    tlp_color = tlp_color_map.get(iobj_to_color.get(iobj_pk,None),Source.TLP_UNKOWN)
+                    if not source.tlp == tlp_color:
+                        source.tlp = tlp_color
+                        source.save()
+
+
+
+

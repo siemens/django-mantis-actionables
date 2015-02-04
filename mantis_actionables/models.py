@@ -39,7 +39,7 @@ class Action(models.Model):
 
 
 class Source(models.Model):
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(default=datetime.now())
 
     # If the source is MANTIS, we populate the following fields:
 
@@ -107,7 +107,8 @@ class Source(models.Model):
         TLP_RED : "red"
     }
 
-    tlp = models.SmallIntegerField(choices=TLP_KIND)
+    tlp = models.SmallIntegerField(choices=TLP_KIND,
+                                   default=TLP_UNKOWN)
 
     url = models.URLField(blank=True)
 
@@ -119,9 +120,13 @@ class Source(models.Model):
     content_type = models.ForeignKey(ContentType)
     object_id = models.PositiveIntegerField()
     yielded = generic.GenericForeignKey('content_type', 'object_id')
+
+    class Meta:
+        unique_together = ('iobject','iobject_fact','iobject_factvalue','top_level_iobject')
+
+
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
 NULL_TIME = datetime.min.replace(tzinfo=timezone.utc)
-
 
 def get_inf_time():
 
@@ -211,7 +216,7 @@ class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
     value = models.CharField(max_length=2048)
 
-    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
+    status_thru = generic.GenericRelation(Status2X,related_query_name='singleton_observables')
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 

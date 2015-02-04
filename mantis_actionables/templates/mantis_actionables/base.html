@@ -36,12 +36,14 @@
                             <select id="{{ table_name|lower }}_tlp_filter"></select>
                         </td>
                         <td></td>
-                        {% if cols|length == 6 %}
+                        {% if cols|length == 7 %}
                           <td><select id="{{ table_name|lower }}_type_filter"></select></td>
                         {% endif %}
                         <td></td>
                         <td><select id="{{ table_name|lower }}_ns_filter"></select></td>
                         <td></td>
+                        {% block additional %}
+                        {% endblock %}
                       </tr>
                     </tfoot>
                   </table>
