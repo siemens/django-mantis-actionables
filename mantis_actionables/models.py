@@ -122,7 +122,7 @@ class Source(models.Model):
     yielded = generic.GenericForeignKey('content_type', 'object_id')
 
     class Meta:
-        unique_together = ('iobject','iobject_fact','iobject_factvalue','top_level_iobject')
+        unique_together = ('iobject','iobject_fact','iobject_factvalue','top_level_iobject','content_type','object_id')
 
 
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
@@ -197,13 +197,18 @@ class Status2X(models.Model):
 
 def createStatus(tags):
     tags = ','.join(tags)
-    new_status = Status(false_positive=False,active=True,tags=tags,priority=Status.PRIORITY_UNCERTAIN)
-    new_status.save()
+    new_status, created = Status.objects.get_or_create(false_positive=False,
+                                                      active=True,
+                                                      tags=tags,
+                                                      priority=Status.PRIORITY_UNCERTAIN)
     return new_status
 
 def updateStatus(status_obj,tags):
     tags = ','.join(tags)
-    new_status, created = Status.objects.get_or_create(false_positive=status_obj.false_positive,active=status_obj.active,tags=tags,priority=status_obj.priority)
+    new_status, created = Status.objects.get_or_create(false_positive=status_obj.false_positive,
+                                                       active=status_obj.active,
+                                                       tags=tags,
+                                                       priority=status_obj.priority)
     return (new_status,created)
 
 

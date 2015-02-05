@@ -83,7 +83,7 @@ class Migration(migrations.Migration):
             name='Source',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('timestamp', models.DateTimeField(default=datetime.datetime(2015, 2, 4, 14, 28, 3, 773093))),
+                ('timestamp', models.DateTimeField(default=datetime.datetime(2015, 2, 5, 11, 18, 49, 553103))),
                 ('origin', models.SmallIntegerField(help_text=b"Chose 'internal (automated input)' for information stemming from automated mechanism such as sandbox reports etc.", choices=[(0, b'Uncertain'), (1, b'Public'), (2, b'Provided by vendor'), (3, b'Provided by partner'), (4, b'Internal (automated input)'), (5, b'Internal (manually selected)')])),
                 ('tlp', models.SmallIntegerField(default=0, choices=[(0, b'Unknown'), (10, b'White'), (20, b'Green'), (30, b'Amber'), (40, b'Red')])),
                 ('url', models.URLField(blank=True)),
@@ -131,7 +131,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='source',
-            unique_together=set([('iobject', 'iobject_fact', 'iobject_factvalue', 'top_level_iobject')]),
+            unique_together=set([('iobject', 'iobject_fact', 'iobject_factvalue', 'top_level_iobject', 'content_type', 'object_id')]),
         ),
         migrations.AddField(
             model_name='singletonobservable',

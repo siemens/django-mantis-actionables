@@ -68,7 +68,9 @@ def datatable_query(table_name, post, **kwargs):
 
             q = q.filter(type_id__in=type_ids).values_list(*(cols.values()))
             #sources__id for join on sources table
-            q_count_all = base.filter(type_id__in=type_ids).values_list('sources__id').count()
+            q_count_all = q.count()
+
+
         else:
             return (base.none(),0,0)
 
@@ -249,6 +251,11 @@ class ActionablesTableStandardSource(ActionablesBaseTableSource):
 
         #treat filters
         if res['draw'] == 1:
+            res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
+            types = DASHBOARD_CONTENTS[table_name]['types']
+            if len(types) > 1:
+                for type_name in types :
+                    res['cols'][table_name + '_type_filter'].append({type_name: type_name})
             res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
             res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
             namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))

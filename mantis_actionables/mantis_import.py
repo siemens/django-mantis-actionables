@@ -261,9 +261,8 @@ def process_STIX_Reports(imported_since, imported_until=None):
     # Or the Q object with the ones remaining in the list
     for item in queries:
         query |= item
-    matching_stix = InfoObject.objects.filter(#create_timestamp__gte=imported_since,
-                                              #create_timestamp__lte=imported_until,
-                                              id__in=[10840])
+    matching_stix = InfoObject.objects.filter(create_timestamp__gte=imported_since,
+                                              create_timestamp__lte=imported_until)
     matching_stix = list(matching_stix.filter(query))
 
     #TODO needed??
@@ -286,8 +285,6 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                 query_mode='vIO2FValue',
                                                 )
             (content_type,results) = postprocessor.export(override_columns='ALMOST_ALL', format='dict')
-
-            print results
 
             if results:
                 iobj_pks_lookup = set()
