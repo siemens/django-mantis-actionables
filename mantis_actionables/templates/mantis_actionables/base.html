@@ -7,6 +7,9 @@
     {{ block.super }}
     <script data-main="{% static 'mantis_actionables/js/' %}" src="{% static 'mantis_actionables/js/require.js' %}"></script>
     <script src="{% static 'mantis_actionables/js/mantis_actionables.js' %}"></script>
+    <script>
+      var view = '{{ view }}'
+    </script>
 {% endblock javascripts %}
 {% load startswith_tags %}
 {% block content %}
@@ -32,17 +35,17 @@
                     {# TODO filter section still hardcoded, should be changed when decided how #}
                     <tfoot>
                       <tr>
+                        {% block data %}
                         <td>
                             <select id="{{ table_name|lower }}_tlp_filter"></select>
                         </td>
                         <td></td>
-                        {% if cols|length == 7 %}
+                        {% if cols|length == 6 %}
                           <td><select id="{{ table_name|lower }}_type_filter"></select></td>
                         {% endif %}
                         <td></td>
                         <td><select id="{{ table_name|lower }}_ns_filter"></select></td>
                         <td></td>
-                        {% block additional %}
                         {% endblock %}
                       </tr>
                     </tfoot>

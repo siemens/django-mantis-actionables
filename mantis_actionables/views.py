@@ -57,11 +57,21 @@ def datatable_query(table_name, post, **kwargs):
             except KeyError:
                 continue
         if type_ids:
-            q = base.filter(type_id__in=type_ids).values_list(*(cols.values()))
+            q = base
+
+            # extend query by kwargs['select_related']
+            q = q.select_related(*kwargs.pop('select_related',[]))
+
+            # extend query by kwargs['filter']
+            for filter in kwargs.pop('filter',[]):
+                q = q.filter(**filter)
+
+            q = q.filter(type_id__in=type_ids).values_list(*(cols.values()))
             #sources__id for join on sources table
             q_count_all = base.filter(type_id__in=type_ids).values_list('sources__id').count()
         else:
             return (base.none(),0,0)
+
 
     # Treat the filter values (WHERE clause)
     col_filters = []
@@ -144,30 +154,29 @@ def datatable_query(table_name, post, **kwargs):
 
     return (q,q_count_all,q_count_filtered)
 
-class ActionablesTableSource(BasicJSONView):
-    curr_cols = COLS.setdefault('standard',{}).copy()
-    if not curr_cols:
-        #init default column_dicts
-        cols_cut = curr_cols.setdefault('cut',{})
-        cols_all = curr_cols.setdefault('all',{})
 
-        #cols to display in tables (query_select_row,col_name,searchable)
-        COLS_TO_DISPLAY = [
-            ('sources__tlp','TLP','0'),
-            ('sources__timestamp','Source TS','0'),
-            ('value','Value','1'),
-            ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-            ('sources__top_level_iobject__name','STIX Name','0')
-        ]
+class ActionablesBaseTableSource(BasicJSONView):
+    #add here filters and select_related statements to the base query
+    filter = {}
+    select_related = []
 
-        #optinal columns to display (index,query_select_row,col_name,searchable)
-        OPT_COLS = [
-            (2,('type__name','Type','1')),]
+    @classmethod
+    def init_data(cls):
+        #should be provided to init the column dicts
+        pass
 
-        fillColDict(cols_cut,COLS_TO_DISPLAY)
-        for index,content in OPT_COLS:
-            COLS_TO_DISPLAY.insert(index,content)
-        fillColDict(cols_all,COLS_TO_DISPLAY)
+    def postprocess(self,table_name,res,q):
+        #insert fetched rows into result
+        for row in q:
+            res['data'].append(row)
+
+        #treat filters
+        if res['draw'] == 1:
+            res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
+            types = DASHBOARD_CONTENTS[table_name]['types']
+            if len(types) > 1:
+                for type_name in types :
+                    res['cols'][table_name + '_type_filter'].append({type_name: type_name})
 
     @property
     def returned_obj(self):
@@ -192,68 +201,120 @@ class ActionablesTableSource(BasicJSONView):
         table_name = POST.get('table_type')
         if table_name in DASHBOARD_CONTENTS.keys():
             # Build the query for the data, and fetch that stuff
-            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, cols=self.curr_cols)
+            kwargs = {
+                'cols' : self.curr_cols,
+                'filter' : self.filter,
+                'select_related' : self.select_related
+            }
 
-            for row in q:
-                row = list(row)
-                row[0] = Source.TLP_COLOR_CSS[row[0]]
-                row[1] = datetime.datetime.date(row[1]).strftime('%d-%m-%Y %X')
-                res['data'].append(row)
+            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, **kwargs)
 
-            # Fetch the column filter values
-            if draw_val == 1:
-                res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
-                types = DASHBOARD_CONTENTS[table_name]['types']
-                if len(types) > 1:
-                    for type_name in types :
-                        res['cols'][table_name + '_type_filter'].append({type_name: type_name})
-                res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
-                res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
-                namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))
-                if len(namespaces) > 1:
-                    for ns in namespaces:
-                        res['cols'][table_name + '_ns_filter'].append({ns : ns})
+            self.postprocess(table_name,res,q)
         return res
 
 
-class ActionablesTableSourceStatus(ActionablesTableSource):
+class ActionablesTableStandardSource(ActionablesBaseTableSource):
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('standard',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('sources__tlp','TLP','0'),
+                ('sources__timestamp','Source TS','0'),
+                ('value','Value','1'),
+                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
+                ('sources__top_level_iobject__name','STIX Name','0')
+            ]
+
+            #optinal columns to display (index,query_select_row,col_name,searchable)
+            OPT_COLS = [
+                (2,('type__name','Type','1')),]
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            for index,content in OPT_COLS:
+                COLS_TO_DISPLAY.insert(index,content)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
+
+    def postprocess(self,table_name,res,q):
+        for row in q:
+            row = list(row)
+            row[0] = Source.TLP_COLOR_CSS[row[0]]
+            row[1] = datetime.datetime.date(row[1]).strftime('%d-%m-%Y %X')
+            res['data'].append(row)
+
+        #treat filters
+        if res['draw'] == 1:
+            res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
+            res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
+            namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))
+            if len(namespaces) > 1:
+                for ns in namespaces:
+                    res['cols'][table_name + '_ns_filter'].append({ns : ns})
+
+
+class ActionablesTableStatusSource(ActionablesBaseTableSource):
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('status',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('value','Value','1'),
+                ('status_thru__status__tags','Tags','1')
+            ]
+
+            #optinal columns to display (index,query_select_row,col_name,searchable)
+            OPT_COLS = [
+                (1,('type__name','Type','1')),]
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            for index,content in OPT_COLS:
+                COLS_TO_DISPLAY.insert(index,content)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
+
     filter = [{
-        'status_thru__status__active' : True
+        'status_thru__active' : True
     }]
     select_related = ['status_thru__status']
-    additional_columns = [
-        ('status_thru__status__tags','Tags','1')
-    ]
 
 
 def imports(request):
+    ActionablesTableStandardSource.init_data()
+    name = 'standard'
     content_dict = {
         'title' : 'Imported Observables',
-        'tables' : []
+        'tables' : [],
+        'view' : name
     }
+
     for id,table_info in DASHBOARD_CONTENTS.items():
         if not table_info['show_type_column']:
-            content_dict['tables'].append((table_info['name'],COLS['standard']['all']))
+            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
-            content_dict['tables'].append((table_info['name'],COLS['standard']['cut']))
+            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
     return render_to_response('mantis_actionables/base.html', content_dict, context_instance=RequestContext(request))
 
 def status_infos(request):
+    ActionablesTableStatusSource.init_data()
+    name = 'status'
     content_dict = {
         'title' : 'Imported Observables - Status View',
-        'tables' : []
+        'tables' : [],
+        'view' : name
     }
 
-    additional_columns = [
-            ('status_thru__status__tags','Tags','1')
-        ]
-
     for id,table_info in DASHBOARD_CONTENTS.items():
-        cols = getColumns(id)
-        print "------------"
-        print cols
-
-        for col in additional_columns:
-            cols[len(cols)] = col
-        content_dict['tables'].append((table_info['name'],cols))
+        if not table_info['show_type_column']:
+            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
+        else:
+            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
     return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))

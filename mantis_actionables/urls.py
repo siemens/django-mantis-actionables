@@ -19,14 +19,14 @@ __author__ = 'Philipp Lang'
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, url
-from .views import ActionablesTableSource,ActionablesTableSourceStatus
+from .views import ActionablesTableStandardSource, ActionablesTableStatusSource
 
 urlpatterns = patterns(
     'mantis_actionables.views',
     url(r'^imports/$', 'imports', name='imports'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
-    url(r'^tbl_data/standard$', ActionablesTableSource.as_view(), name='table_data_source'),
-    url(r'^tbl_data/status$', ActionablesTableSourceStatus.as_view(), name='table_data_source_status'),
+    url(r'^tbl_data/standard$', ActionablesTableStandardSource.as_view(), name='table_data_source'),
+    url(r'^tbl_data/status$', ActionablesTableStatusSource.as_view(), name='table_data_source_status'),
     url(r'^status_infos/$', 'status_infos', name='status_infos'),
     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
 )
