@@ -39,7 +39,7 @@ class Action(models.Model):
 
 
 class Source(models.Model):
-    timestamp = models.DateTimeField(default=datetime.now())
+    timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
     # If the source is MANTIS, we populate the following fields:
 
@@ -152,7 +152,7 @@ class Status(models.Model):
 
     #Field to store tags, seperated by ',', when Django 1.8 released replaced by ArrayField
     #https://docs.djangoproject.com/en/dev/ref/contrib/postgres/fields
-    tags = models.TextField()
+    tags = models.TextField(blank=True,default='')
 
     PRIORITY_UNCERTAIN = 0
     PRIORITY_LOW = 10
