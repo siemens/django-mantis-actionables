@@ -195,6 +195,9 @@ class Status2X(models.Model):
     object_id = models.PositiveIntegerField()
     marked = generic.GenericForeignKey('content_type', 'object_id')
 
+    def __unicode__(self):
+        return "Status2X: id %s, active %s, status_id %s, marked_id %s" % (self.id,self.active,self.status_id,self.marked.id)
+
 def createStatus(tags):
     tags = ','.join(tags)
     new_status, created = Status.objects.get_or_create(false_positive=False,

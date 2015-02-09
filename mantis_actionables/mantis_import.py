@@ -17,8 +17,12 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-import ipaddr, datetime, re
+import ipaddr
+import re
 
+from django.utils import timezone
+
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.contrib.contenttypes.models import ContentType
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
@@ -151,7 +155,7 @@ def extract_singleton_observable(exporter_result):
             else:
                 return (None,None)
 
-        elif exporter == "fqdn":
+        elif exporter == "fqdns":
             to_validate = exporter_result['fqdn']
             if(is_valid_fqdn(to_validate)):
                 return ('FQDN',to_validate)
@@ -245,15 +249,12 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
     """
     if not imported_until:
-        imported_until = datetime.datetime.now()
+        imported_until = timezone.now()
     report_filters = []
     for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
         report_filters.append({
-            'iobject_type__name' : report_filter['iobject_type']
-        })
-        report_filters.append({
+            'iobject_type__name' : report_filter['iobject_type'],
             'iobject_family__name' : report_filter['iobject_type_family']
-
         })
     queries = [Q(**filter) for filter in report_filters]
     query = queries.pop()
@@ -265,8 +266,15 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                               create_timestamp__lte=imported_until)
     matching_stix = list(matching_stix.filter(query))
 
-    #TODO needed??
-    skip_terms = [{'term':'Related','operator':'icontains'}]
+
+
+    # We leave the skip terms away since we are going in down direction,
+    # so the danger that we pull in lot's of stuff we do not want
+    # is lower
+
+    #skip_terms = [{'term':'Related','operator':'icontains'}]
+
+    skip_terms = []
 
     tag_iobj_cache = {}
     tag_fact_cache = {}
@@ -278,11 +286,17 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
-
+        postprocessor=None
         for exporter in ACTIVE_MANTIS_EXPORTERS:
             postprocessor_class = POSTPROCESSOR_REGISTRY[exporter]
             postprocessor = postprocessor_class(graph=graph,
                                                 query_mode='vIO2FValue',
+                                                # By feeding in the existing postprocessor,
+                                                # we re-use the information that has
+                                                # already been pulled from the database
+                                                # rather than pulling it again for
+                                                # each iteration.
+                                                details_obj = postprocessor
                                                 )
             (content_type,results) = postprocessor.export(override_columns='ALMOST_ALL', format='dict')
 
@@ -324,6 +338,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     iobj_to_color[map[0]] = map[1].lower()
 
                 for result in results:
+
                     iobj_pk = int(result['object.pk'])
                     fact_pk = int(result['fact.pk'])
                     fact_value_pk = int(result['value.pk'])
@@ -349,20 +364,35 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     if created:
                         print "singleton created (%s,%s)" % (type,value)
                         status = createStatus(tags)
-                        status2x = Status2X(action=action,status=status,active=True,timestamp=datetime.datetime.now(),marked=observable)
+                        status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)
                         status2x.save()
 
                     else:
-                        print "singleton not created, already in database"
-                        status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
-                        status = status2x.status
-                        new_status,created = updateStatus(status,tags)
+                        print "singleton (%s, %s) not created, already in database" % (type,value)
+                        try:
+                            status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
+                            status = status2x.status
+                            new_status,created = updateStatus(status,tags)
+
+                            print "STATUS %s %s %s" % (status.id, new_status.id, created)
+                            print status.tags
+                            print new_status.tags
+                        except ObjectDoesNotExist:
+                            status = createStatus(tags)
+                            status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)
+                            status2x.save()
+                            created = False
 
                         if created or new_status.id != status.id:
+                            print "Updating status"
+
                             status2x.active = False
                             status2x.save()
-                            status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=datetime.datetime.now(),marked=observable)
+                            print status2x
+                            status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
                             status2x_new.save()
+                            print status2x_new
+                            print Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
 
                     source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
                                                                 iobject_fact_id=fact_pk,
