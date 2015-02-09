@@ -32,8 +32,9 @@ from dingos.models import InfoObject,Fact
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
 from dingos.graph_traversal import follow_references
 
-from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES
-from .models import SingletonObservable, SingletonObservableType, Source, createStatus, Status, Status2X, Action, updateStatus
+from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, SPECIAL_TAGS_REGEX
+from .models import SingletonObservable, SingletonObservableType, Source, createStatus, Status, Status2X, Action, updateStatus,\
+    Context, ActionableTag, ActionableTag2X, TagName, ActionableTaggingHistory
 
 #build a name to pk mapping for SingletonObservableTypes on server startup
 singleton_observable_types = {}
@@ -357,6 +358,24 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     found_tags = set(fact2tag_map.get(fact_pk,[]))
 
                     added_tags = found_tags.difference(existing_tags)
+
+                    # Check if any tag is matching a specific pattern
+                    for tag in added_tags:
+                        if any(regex.match(tag) for regex in SPECIAL_TAGS_REGEX):
+                            curr_context,created = Context.objects.get_or_create(name=tag)
+                            curr_tagname,created = TagName.objects.get_or_create(name=tag)
+                            curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
+                                                                                     tag=curr_tagname)
+                            curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
+                                                                                         object_id=observable.id,
+                                                                                         content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+
+                            #TODO change hardcoded user id here
+                            history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
+                                                                                             action=ActionableTaggingHistory.ADD,
+                                                                                             object_id=observable.id,
+                                                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                                                             user_id=1)
 
 
                     # We take the union as new tag info
