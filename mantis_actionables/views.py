@@ -278,7 +278,7 @@ class ActionablesTableStatusSource(ActionablesBaseTableSource):
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
                 ('value','Value','1'),
-                ('status_thru__status__tags','Tags','1')
+                ('mantis_tags','Tags','1')
             ]
 
             #optinal columns to display (index,query_select_row,col_name,searchable)

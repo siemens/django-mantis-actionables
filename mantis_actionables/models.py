@@ -198,19 +198,16 @@ class Status2X(models.Model):
     def __unicode__(self):
         return "Status2X: id %s, active %s, status_id %s, marked_id %s" % (self.id,self.active,self.status_id,self.marked.id)
 
-def createStatus(tags):
-    tags = ','.join(tags)
+def createStatus(**kwargs):
+
     new_status, created = Status.objects.get_or_create(false_positive=False,
                                                       active=True,
-                                                      tags=tags,
                                                       priority=Status.PRIORITY_UNCERTAIN)
     return new_status
 
-def updateStatus(status_obj,tags):
-    tags = ','.join(tags)
+def updateStatus(status_obj,**kwargs):
     new_status, created = Status.objects.get_or_create(false_positive=status_obj.false_positive,
                                                        active=status_obj.active,
-                                                       tags=tags,
                                                        priority=status_obj.priority)
     return (new_status,created)
 
@@ -227,6 +224,8 @@ class SingletonObservable(models.Model):
     status_thru = generic.GenericRelation(Status2X,related_query_name='singleton_observables')
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
+
+    mantis_tags = models.TextField(blank=True,default='')
 
     class Meta:
         unique_together = ('type', 'value')
