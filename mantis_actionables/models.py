@@ -184,7 +184,7 @@ class Status2X(models.Model):
 
     active = models.BooleanField(default=True)
 
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
 
     # Status can be linked to different models:
@@ -261,4 +261,59 @@ class ImportInfo(models.Model):
 
     comment = models.TextField(blank=True)
 
+
+class Context(models.Model):
+    name = models.CharField(max_length=40)
+
+class TagName(models.Model):
+    name = models.CharField(max_length=40)
+
+class ActionableTag(models.Model):
+    context = models.ForeignKey(Context,
+                                null=True)
+    tag = models.ForeignKey(TagName)
+
+class ActionableTag2X(models.Model):
+
+    actionable_tag = models.ForeignKey(ActionableTag,
+                                related_name='actionable_tag_thru')
+
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    tagged = generic.GenericForeignKey('content_type', 'object_id')
+
+
+class ActionableTaggingHistory(models.Model):
+    ADD = 0
+    REMOVE = 1
+    ACTIONS = [
+        (ADD,'Added'),
+        (REMOVE,'Removed')
+    ]
+
+    tag = models.ForeignKey(ActionableTag,related_name='actionable_tag_history')
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+    action = models.SmallIntegerField(choices=ACTIONS)
+    user = models.ForeignKey(User,related_name='actionable_tagging_history')
+    comment = models.TextField(blank=True)
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    tobject = generic.GenericForeignKey('content_type', 'object_id')
+
+
+
+
+
+
+
+    # Status can be linked to different models:
+    # - singleton Observables
+    # - IDS Signatures
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    marked = generic.GenericForeignKey('content_type', 'object_id')
 
