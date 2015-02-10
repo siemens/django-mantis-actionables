@@ -1,4 +1,6 @@
 {% extends "mantis_actionables/base.html" %}
 {% block content %}
-test
+{% for obs_info,tags in obs_tag_map.items %}
+  {{ obs_info.0 }} {{ obs_info.1 }} {{ obs_info.2 }} {{ tags }} </br>
+{% endfor %}
 {% endblock %}

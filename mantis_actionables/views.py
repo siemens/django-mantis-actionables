@@ -331,15 +331,21 @@ class ActionablesContextView(BasicTemplateView):
 
     def get_context_data(self, **kwargs):
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
-        cols = ['tag__name','actionable_tag_thru__singleton_observables__value','actionable_tag_thru__singleton_observables__type__name']
-        matching = ActionableTag.objects.filter(context__name=self.curr_context_name).values(*cols)
+        cols = ['tag__name',\
+                'actionable_tag_thru__singleton_observables__value',\
+                'actionable_tag_thru__singleton_observables__type__name',\
+                'actionable_tag_thru__singleton_observables__subtype__name']
+        matching_observables = list(ActionableTag.objects.filter(context__name=self.curr_context_name)\
+                                        .filter(actionable_tag_thru__singleton_observables__isnull=False)\
+                                        .values_list(*cols))
 
-        print "---------------"
-        for m in matching:
-            print m
+        obs_tag_map = {}
+        for observable in matching_observables:
+            obs = obs_tag_map.setdefault((observable[1],observable[2],observable[3]),[])
+            obs.append(observable[0])
 
 
-
+        context['obs_tag_map'] = obs_tag_map
         return context
 
     def get(self, request, *args, **kwargs):
