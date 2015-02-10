@@ -381,6 +381,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
                     else:
                         print "singleton (%s, %s) not created, already in database" % (type,value)
+                        new_status = None
                         try:
                             status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
                             status = status2x.status
@@ -396,7 +397,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
                             status2x.save()
                             created = False
 
-                        if created and new_status.id != status.id:
+                        if created or (new_status and new_status.id != status.id):
                             print "Updating status"
 
                             status2x.active = False
