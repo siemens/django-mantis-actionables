@@ -216,9 +216,13 @@ class SingletonObservableType(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
+class SingletonObservableSubtype(models.Model):
+    name = models.CharField(max_length=255,blank=True)
+    description = models.TextField(blank=True)
 
 class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
+    subtype = models.ForeignKey(SingletonObservableSubtype,null=True)
     value = models.CharField(max_length=2048)
 
     status_thru = generic.GenericRelation(Status2X,related_query_name='singleton_observables')
@@ -228,7 +232,7 @@ class SingletonObservable(models.Model):
     mantis_tags = models.TextField(blank=True,default='')
 
     class Meta:
-        unique_together = ('type', 'value')
+        unique_together = ('type', 'subtype', 'value')
 
 
 class SignatureType(models.Model):

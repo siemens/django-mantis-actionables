@@ -20,7 +20,7 @@ from datetime import datetime
 
 from django.core.management.base import BaseCommand, CommandError
 
-from ...mantis_import import extract_singleton_observable, process_STIX_Reports
+from ...mantis_import import process_STIX_Reports
 
 class Command(BaseCommand):
     """
