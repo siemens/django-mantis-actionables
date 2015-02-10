@@ -1,21 +1,17 @@
 __author__ = 'Philipp Lang'
 
+import datetime
+from querystring_parser import parser
+
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.db.models import Q
 
-from querystring_parser import parser
-
-import datetime
-from django.utils import timezone
-
-
-
-from dingos.view_classes import BasicJSONView
+from dingos.view_classes import BasicJSONView, BasicTemplateView
 from dingos.models import IdentifierNameSpace
 
 from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,Source
+from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory
 from .mantis_import import singleton_observable_types
 
 #init column_dict
@@ -310,7 +306,7 @@ def imports(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
-    return render_to_response('mantis_actionables/base.html', content_dict, context_instance=RequestContext(request))
+    return render_to_response('mantis_actionables/table_base.html', content_dict, context_instance=RequestContext(request))
 
 def status_infos(request):
     ActionablesTableStatusSource.init_data()
@@ -327,3 +323,25 @@ def status_infos(request):
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
     return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))
+
+class ActionablesContextView(BasicTemplateView):
+    template_name = 'mantis_actionables/ContextView.html'
+
+    title = 'Context View'
+
+    def get_context_data(self, **kwargs):
+        context = super(ActionablesContextView, self).get_context_data(**kwargs)
+        cols = ['tag__name','actionable_tag_thru__singleton_observables__value','actionable_tag_thru__singleton_observables__type__name']
+        matching = ActionableTag.objects.filter(context__name=self.curr_context_name).values(*cols)
+
+        print "---------------"
+        for m in matching:
+            print m
+
+
+
+        return context
+
+    def get(self, request, *args, **kwargs):
+        self.curr_context_name = kwargs.get('context_name')
+        return super(ActionablesContextView,self).get(request, *args, **kwargs)

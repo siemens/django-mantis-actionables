@@ -370,12 +370,11 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                                                          object_id=observable.id,
                                                                                          content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
 
-                            #TODO change hardcoded user id here
                             history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
                                                                                              action=ActionableTaggingHistory.ADD,
                                                                                              object_id=observable.id,
                                                                                              content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                                                             user_id=1)
+                                                                                             user=None)
 
 
                     # We take the union as new tag info

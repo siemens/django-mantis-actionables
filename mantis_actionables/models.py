@@ -225,6 +225,8 @@ class SingletonObservable(models.Model):
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
+    actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
+
     mantis_tags = models.TextField(blank=True,default='')
 
     class Meta:
@@ -295,7 +297,7 @@ class ActionableTaggingHistory(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
     action = models.SmallIntegerField(choices=ACTIONS)
-    user = models.ForeignKey(User,related_name='actionable_tagging_history')
+    user = models.ForeignKey(User,related_name='actionable_tagging_history',null=True)
     comment = models.TextField(blank=True)
 
     content_type = models.ForeignKey(ContentType)
