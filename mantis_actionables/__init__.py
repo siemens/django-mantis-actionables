@@ -1,5 +1,6 @@
 __version__ = '0.0.1'
 
+import re
 
 STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
                                  'iobject_type_family': 'stix.mitre.org'}]
@@ -32,4 +33,8 @@ DASHBOARD_CONTENTS = {
         'show_type_column': False
     }
 }
+
+SPECIAL_TAGS_REGEX = [
+    re.compile(r"^INVES-")
+]
 
