@@ -22,7 +22,7 @@ import re
 
 from django.utils import timezone
 
-from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 
 from django.db.models import Q
@@ -34,6 +34,9 @@ from dingos.graph_traversal import follow_references
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, SPECIAL_TAGS_REGEX
 from .models import SingletonObservable, SingletonObservableType, SingletonObservableSubtype, Source, createStatus, Status, Status2X, Action, updateStatus,\
     Context, ActionableTag, ActionableTag2X, TagName, ActionableTaggingHistory
+
+#content_type_id
+CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
 #build a name to pk mapping for SingletonObservableTypes on server startup
 singleton_observable_types = {}
@@ -51,10 +54,6 @@ for type in singleton_observable_subtypes_qs:
 tlp_color_map = {}
 for (id,color) in Source.TLP_KIND:
     tlp_color_map[color.lower()] = id
-
-#content_type_id
-CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
-
 
 def process_STIX_Reports(imported_since, imported_until=None):
     """

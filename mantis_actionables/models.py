@@ -273,6 +273,10 @@ class Context(models.Model):
 class TagName(models.Model):
     name = models.CharField(max_length=40)
 
+    def __unicode__(self):
+        return "%s" % (self.name)
+
+
 class ActionableTag(models.Model):
     context = models.ForeignKey(Context,
                                 null=True)
@@ -321,4 +325,16 @@ class ActionableTaggingHistory(models.Model):
     content_type = models.ForeignKey(ContentType)
     object_id = models.PositiveIntegerField()
     marked = generic.GenericForeignKey('content_type', 'object_id')
+
+    @classmethod
+    def bulk_create_tagging_history(cls,action,tags,objects,user,comment):
+        #content_type_id
+        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+        action = getattr(cls,action.upper())
+
+        entry_list = []
+        for object in objects:
+                entry_list.extend([ActionableTaggingHistory(action=action,user=user,comment=comment,object_id=object,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,tag=x) for x in tags])
+        ActionableTaggingHistory.objects.bulk_create(entry_list)
+
 

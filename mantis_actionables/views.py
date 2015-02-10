@@ -6,13 +6,21 @@ from querystring_parser import parser
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.db.models import Q
+from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
+
+from django.contrib.contenttypes.models import ContentType
 
 from dingos.view_classes import BasicJSONView, BasicTemplateView
 from dingos.models import IdentifierNameSpace
+from dingos.core.utilities import listify
 
 from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory
+from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
 from .mantis_import import singleton_observable_types
+
+#content_type_id
+CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
 #init column_dict
 COLS = {}
@@ -324,6 +332,84 @@ def status_infos(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
     return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))
 
+def processActionablesTagging(data,**kwargs):
+
+    TAG_HTML =  """
+                <span id="%s" class="tag stay-inline">
+                    %s<a class="remove_tag_button stay-inline" data-tag-name="%s"> X</a>
+                </span>
+                """
+
+    action = data['action']
+    obj_pks = data['objects']
+    tags = listify(data['tags'])
+    print "Passed tags %s" % tags
+
+    res = {}
+    ACTIONS = ['add', 'remove']
+    if action in ACTIONS:
+
+        user = kwargs.pop('user',None)
+        if user is None or not isinstance(user,User):
+            raise ObjectDoesNotExist('no user for this action provided')
+
+        curr_context = data.get('curr_context',None)
+        if not curr_context:
+            raise ObjectDoesNotExist('no context for this action found')
+
+        user_data = data.get('user_data',None)
+
+        if tags:
+            tag_name_obj = []
+            context,created = Context.objects.get_or_create(name=curr_context)
+            if action == 'add':
+                for tag in tags:
+                    curr_tag, created = TagName.objects.get_or_create(name=tag)
+                    actionable_tag,created = ActionableTag.objects.get_or_create(context=context,
+                                                                         tag=curr_tag)
+                    tag_name_obj.append(actionable_tag)
+                    for pk in obj_pks:
+                        actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
+                                                                          object_id=pk,
+                                                                          content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+
+                res['html'] = TAG_HTML % (tag,tag,tag)
+                res['status'] = 0
+                comment = '' if not user_data else user_data
+                ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,comment)
+
+            elif action == 'remove':
+                if user_data is None:
+                    res['additional'] = {
+                        'dialog_id' : 'dialog-tagging-remove',
+                        'msg' : 'To delete a tag, a comment is required.'
+                    }
+                    res['status'] = 1
+                else:
+                    if user_data == '':
+                        res['status'] = -1
+                        res['err'] = "no comment provided - tag not deleted"
+                    else:
+                        for tag in tags:
+                            curr_tag = TagName.objects.get(name=tag)
+                            actionable_tag = ActionableTag.objects.get(context=context,
+                                                               tag=curr_tag)
+                            tag_name_obj.append(actionable_tag)
+                            for pk in obj_pks:
+                                ActionableTag2X.objects.get(actionable_tag=actionable_tag,
+                                                    object_id=pk,
+                                                    content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).delete()
+                        ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,user_data)
+                        res['status'] = 0
+        else:
+            res['err'] = 'no tag provided'
+            res['status'] = -1
+    else:
+        raise NotImplementedError('%s not a possible action to perform') % (action)
+
+    return res
+
+
 class ActionablesContextView(BasicTemplateView):
     template_name = 'mantis_actionables/ContextView.html'
 
@@ -334,17 +420,19 @@ class ActionablesContextView(BasicTemplateView):
         cols = ['tag__name',\
                 'actionable_tag_thru__singleton_observables__value',\
                 'actionable_tag_thru__singleton_observables__type__name',\
-                'actionable_tag_thru__singleton_observables__subtype__name']
+                'actionable_tag_thru__singleton_observables__subtype__name',\
+                'actionable_tag_thru__singleton_observables__id']
         matching_observables = list(ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
                                         .values_list(*cols))
 
         obs_tag_map = {}
         for observable in matching_observables:
-            obs = obs_tag_map.setdefault((observable[1],observable[2],observable[3]),[])
+            obs = obs_tag_map.setdefault((observable[1],observable[2],observable[3],observable[4]),[])
             obs.append(observable[0])
 
 
+        context['isEditable'] = True
         context['obs_tag_map'] = obs_tag_map
         return context
 
