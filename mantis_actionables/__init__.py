@@ -5,19 +5,19 @@ import re
 STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
                                  'iobject_type_family': 'stix.mitre.org'}]
 
-ACTIVE_MANTIS_EXPORTERS = ['hashes','ips','fqdns']
+ACTIVE_MANTIS_EXPORTERS = ['cybox_all']
 
 DASHBOARD_CONTENTS = {
     'ips' : {
         'basis': 'SingletonObservable',
         'name' : 'IPs',
-        'types' : ['IPv4','IPv6'],
+        'types' : ['IP'],
         'show_type_column': True,
     },
     'hashes' : {
         'basis': 'SingletonObservable',
         'name' : 'Hashes',
-        'types' : ['MD5','SHA1','SHA256'],
+        'types' : ['Hash'],
         'show_type_column': True,
     },
     'fqdns' : {
@@ -31,7 +31,14 @@ DASHBOARD_CONTENTS = {
         'name': 'URLs',
         'types' : 'URL',
         'show_type_column': False
+    },
+    'emails' : {
+        'basis': 'SingletonObservable',
+        'name': 'Email Addresses',
+        'types' : ['Email_Address'],
+        'show_type_column': False
     }
+
 }
 
 SPECIAL_TAGS_REGEX = [

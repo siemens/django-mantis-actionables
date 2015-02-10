@@ -233,7 +233,7 @@ class ActionablesTableStandardSource(ActionablesBaseTableSource):
 
             #optinal columns to display (index,query_select_row,col_name,searchable)
             OPT_COLS = [
-                (2,('type__name','Type','1')),]
+                (2,('subtype__name','Type','1')),]
 
             fillColDict(cols_cut,COLS_TO_DISPLAY)
             for index,content in OPT_COLS:
@@ -279,7 +279,7 @@ class ActionablesTableStatusSource(ActionablesBaseTableSource):
 
             #optinal columns to display (index,query_select_row,col_name,searchable)
             OPT_COLS = [
-                (1,('type__name','Type','1')),]
+                (1,('subtype__name','Type','1')),]
 
             fillColDict(cols_cut,COLS_TO_DISPLAY)
             for index,content in OPT_COLS:
@@ -296,7 +296,7 @@ def imports(request):
     ActionablesTableStandardSource.init_data()
     name = 'standard'
     content_dict = {
-        'title' : 'Imported Observables',
+        'title' : 'Actionables',
         'tables' : [],
         'view' : name
     }
