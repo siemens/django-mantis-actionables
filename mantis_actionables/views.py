@@ -5,15 +5,17 @@ from querystring_parser import parser
 
 from django.shortcuts import render_to_response
 from django.template import RequestContext
+from django.template.loader import render_to_string
 from django.db.models import Q
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-
 from django.contrib.contenttypes.models import ContentType
 
+from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.view_classes import BasicJSONView, BasicTemplateView
 from dingos.models import IdentifierNameSpace
 from dingos.core.utilities import listify
+from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
@@ -333,13 +335,6 @@ def status_infos(request):
     return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))
 
 def processActionablesTagging(data,**kwargs):
-
-    TAG_HTML =  """
-                <span id="%s" class="tag stay-inline">
-                    %s<a class="remove_tag_button stay-inline" data-tag-name="%s"> X</a>
-                </span>
-                """
-
     action = data['action']
     obj_pks = data['objects']
     tags = listify(data['tags'])
@@ -373,7 +368,9 @@ def processActionablesTagging(data,**kwargs):
                                                                           object_id=pk,
                                                                           content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
 
-                res['html'] = TAG_HTML % (tag,tag,tag)
+                curr_context = show_TagDisplay([tag],'actionables',isEditable=True)
+                tag_html = render_to_string('dingos/%s/includes/_TagDisplay.html' % (DINGOS_TEMPLATE_FAMILY),curr_context)
+                res['html'] = tag_html
                 res['status'] = 0
                 comment = '' if not user_data else user_data
                 ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,comment)
