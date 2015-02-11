@@ -21,9 +21,9 @@
            <td class="w-1 nowrap middle">{{ obs_info.0 }}</td>
            <td class="w-1 nowrap middle">{{ obs_info.1 }}{{ obs_info.2 }}</td>
            <td class="middle">
-            <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;">
+            <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
             {% if tags %}
-              {% show_TagDisplay tags obs_info.3 'actionables' isEditable %}
+              {% show_TagDisplay tags 'actionables' isEditable %}
             {% endif %}
             </div>
           {% if isEditable %}
