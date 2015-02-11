@@ -66,21 +66,17 @@ table.result_table .tbl_hide {
 
 /* Make dashboard boxes align a little bit better - nah still crap */
 .grp-module .grp-row.grp-cells:not(tr) .grp-cell {
-  display: inline-block;
-  width: 48%;
-  overflow: auto;
+    display: block;
+    width: 100%;
 }
 
-/* make the boxes somewhat responsive */
-@media (max-width: 1300px) {
-    .grp-module .grp-row.grp-cells:not(tr) .grp-cell {
-	display: block;
-	width: 100%;
-    }
-    .grp-module .grp-row > .grp-cell {
+.grp-module .grp-row > .grp-cell {
 	padding: 20px 0px !important;
 	margin: 0;
     }
+
+.grp-module .grp-row:not(tr).grp-cells .grp-cell+.grp-cell {
+    border: none;
 }
 
 /* TLP display */
