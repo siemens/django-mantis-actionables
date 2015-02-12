@@ -18,7 +18,10 @@
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, url
-from .views import ActionablesTableStandardSource, ActionablesTableStatusSource, ActionablesContextView
+from .views import ActionablesTableStandardSource, \
+    ActionablesTableStatusSource, \
+    ActionablesContextView, \
+    ActionablesTagHistoryView
 
 urlpatterns = patterns(
     'mantis_actionables.views',
@@ -27,6 +30,7 @@ urlpatterns = patterns(
     url(r'^tbl_data/standard$', ActionablesTableStandardSource.as_view(), name='table_data_source'),
     url(r'^tbl_data/status$', ActionablesTableStatusSource.as_view(), name='table_data_source_status'),
     url(r'^status_infos/$', 'status_infos', name='status_infos'),
-    url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]*)', ActionablesContextView.as_view(), name='actionables_context_view')
+    url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]*)', ActionablesContextView.as_view(), name='actionables_context_view'),
+    url(r'^history/(?P<tag_context>[a-zA-Z0-9_\-]*)', ActionablesTagHistoryView.as_view(), name='actionables_tag_history_view')
     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
 )

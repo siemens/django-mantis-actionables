@@ -1,4 +1,3 @@
-__author__ = 'Philipp Lang'
 
 import datetime
 from querystring_parser import parser
@@ -316,7 +315,8 @@ def imports(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
-    return render_to_response('mantis_actionables/table_base.html', content_dict, context_instance=RequestContext(request))
+    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
+                              content_dict, context_instance=RequestContext(request))
 
 def status_infos(request):
     ActionablesTableStatusSource.init_data()
@@ -333,7 +333,8 @@ def status_infos(request):
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
     print content_dict
-    return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))
+    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
+                              content_dict, context_instance=RequestContext(request))
 
 def processActionablesTagging(data,**kwargs):
     action = data['action']
@@ -409,16 +410,16 @@ def processActionablesTagging(data,**kwargs):
 
 
 class ActionablesContextView(BasicTemplateView):
-    template_name = 'mantis_actionables/ContextView.html'
+    template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
 
     title = 'Context View'
 
     def get_context_data(self, **kwargs):
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
         cols = ['tag__name',\
-                'actionable_tag_thru__singleton_observables__value',\
                 'actionable_tag_thru__singleton_observables__type__name',\
                 'actionable_tag_thru__singleton_observables__subtype__name',\
+                'actionable_tag_thru__singleton_observables__value',\
                 'actionable_tag_thru__singleton_observables__id']
         matching_observables = list(ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
@@ -434,6 +435,51 @@ class ActionablesContextView(BasicTemplateView):
         context['obs_tag_map'] = obs_tag_map
         return context
 
-    def get(self, request, *args, **kwargs):
+    def get(self,request, *args, **kwargs):
         self.curr_context_name = kwargs.get('context_name')
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
+
+class ActionablesTagHistoryView(BasicTemplateView):
+    template_name = 'mantis_actionables/%s/ActionTagHistoryList.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = 'Actionable Tag History'
+
+    tag_context = None
+
+    possible_models = {
+            SingletonObservable : ['id',
+                                   'type__name',
+                                   'subtype__name','value'],
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super(ActionablesTagHistoryView, self).get_context_data(**kwargs)
+
+        cols_history = ['tag__tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
+        sel_rel = ['tag','user','content_type']
+        history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
+                         filter(tag__context__name=self.tag_context).order_by('timestamp').\
+                         values(*cols_history))
+
+        obj_info_mapping = {}
+        for model,cols in self.possible_models.items():
+            content_id = ContentType.objects.get_for_model(model).id
+            setattr(self,'pks',set([x['object_id'] for x in history_q if x['content_type_id'] == content_id]))
+            model_q = model.objects.filter(id__in=self.pks).values(*cols)
+            current_model_map = obj_info_mapping.setdefault(content_id,{})
+            for obj in model_q:
+                print obj
+                current_model_map[obj['id']] = obj
+            del self.pks
+        context['mode'] = self.mode
+        context['tag_context'] = self.tag_context
+        context['history'] = history_q
+        context['map_objs'] = obj_info_mapping
+        context['map_action'] = ActionableTaggingHistory.ACTIONS
+        return context
+
+    def get(self, request, *args, **kwargs):
+        self.mode = request.GET.get('mode')
+        self.tag_context = kwargs.pop('tag_context',None)
+        self.title = "Timeline for '%s'" % self.tag_context
+        return super(ActionablesTagHistoryView,self).get(request, *args, **kwargs)

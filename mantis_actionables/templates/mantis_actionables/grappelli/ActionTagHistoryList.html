@@ -1,0 +1,63 @@
+{% extends "dingos/grappelli/lists/base_lists_one_column.html" %}
+
+{% load dingos_tags %}
+
+{% block content %}
+  <div class="c-2">
+    <div class="grp-module">
+      <h2 class="grp-collapse-handler">{% block list_title %}Timeline for "{{ tag_context }}"{% endblock %}</h2>
+        <table>
+          <thead>
+            <tr>
+             <th>
+               Date
+             </th>
+                <th>
+                    Tag
+                </th>
+
+             <th>
+               Action
+             </th>
+             <th>
+               User
+             </th>
+             <th>
+               Type
+             </th>
+             <th>
+               Subtype
+             </th>
+              <th>
+               Value
+             </th>
+             <th>
+               Comment
+             </th>
+          </tr>
+          </thead>
+
+        {% for entry in history %}
+          {% with map_obj=map_objs|get_value:entry.content_type_id %}
+            <tr>
+              <td>{{ entry.timestamp }}</td>
+                <td>
+                {% show_TagDisplay entry.tag__tag__name None False %}
+                </td>
+              <td>{% with action=map_action|get_value:entry.action %}{{ action.1 }}{% endwith %}</td>
+              <td>{{ entry.user__username }}</td>
+              {% with obj=map_obj|get_value:entry.object_id %}
+
+                <td>{{ obj.type__name }}</td>
+                <td>{{ obj.subtype__name }}</td>
+                <td>{{ obj.value }}</td>
+
+              <td>{{ entry.comment }}</td>
+            </tr>
+          {% endwith %}
+          {% endwith %}
+        {% endfor %}
+        </table>
+    </div>
+  </div>
+{% endblock %}

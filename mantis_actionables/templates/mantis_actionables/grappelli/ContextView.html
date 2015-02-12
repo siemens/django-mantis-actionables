@@ -1,4 +1,4 @@
-{% extends "mantis_actionables/base.html" %}
+{% extends "mantis_actionables/grappelli/base.html" %}
 {% load actionables_tags %}
 {% load dingos_tags %}
 
@@ -10,16 +10,24 @@
   <div class="c-2">
     <div class="grp-module">
       <h2 class="grp-collapse-handler">Context "{{ view.curr_context_name }}"</h2>
+
+
        <table>
          <tr>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "type" "Type" %}
+           </th>
+           <th>Subtype</th>
+
            <th>Value</th>
-           <th>Type</th>
+
            <th>Tags</th>
          </tr>
          {% for obs_info,tags in obs_tag_map.items %}
          <tr>
            <td class="w-1 nowrap middle">{{ obs_info.0 }}</td>
-           <td class="w-1 nowrap middle">{{ obs_info.1 }}{{ obs_info.2 }}</td>
+           <td class="w-1 nowrap middle">{{ obs_info.1 }}</td>
+           <td>{{ obs_info.2 }}</td>
            <td class="middle">
             <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
             {% if tags %}
