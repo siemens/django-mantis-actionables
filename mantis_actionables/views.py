@@ -332,6 +332,7 @@ def status_infos(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
+    print content_dict
     return render_to_response('mantis_actionables/status.html', content_dict, context_instance=RequestContext(request))
 
 def processActionablesTagging(data,**kwargs):
