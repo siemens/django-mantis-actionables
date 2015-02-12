@@ -414,6 +414,12 @@ class ActionablesContextView(BasicTemplateView):
 
     title = 'Context View'
 
+    order_by_dict = {'type':'actionable_tag_thru__singleton_observables__type__name',
+                     'subtype':'actionable_tag_thru__singleton_observables__subtype__name',
+                     'value': 'actionable_tag_thru__singleton_observables__value'}
+
+
+
     def get_context_data(self, **kwargs):
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
         cols = ['tag__name',\
@@ -421,9 +427,13 @@ class ActionablesContextView(BasicTemplateView):
                 'actionable_tag_thru__singleton_observables__subtype__name',\
                 'actionable_tag_thru__singleton_observables__value',\
                 'actionable_tag_thru__singleton_observables__id']
-        matching_observables = list(ActionableTag.objects.filter(context__name=self.curr_context_name)\
+        matching_observables = ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
-                                        .values_list(*cols))
+                                        .values_list(*cols)
+
+        if self.order_by:
+            matching_observables.order_by(self.order_by)
+
 
         obs_tag_map = {}
         for observable in matching_observables:
@@ -436,6 +446,7 @@ class ActionablesContextView(BasicTemplateView):
         return context
 
     def get(self,request, *args, **kwargs):
+        self.order_by = self.order_by_dict.get(request.GET.get('o'))
         self.curr_context_name = kwargs.get('context_name')
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
 
@@ -480,6 +491,7 @@ class ActionablesTagHistoryView(BasicTemplateView):
 
     def get(self, request, *args, **kwargs):
         self.mode = request.GET.get('mode')
+
         self.tag_context = kwargs.pop('tag_context',None)
         self.title = "Timeline for '%s'" % self.tag_context
         return super(ActionablesTagHistoryView,self).get(request, *args, **kwargs)

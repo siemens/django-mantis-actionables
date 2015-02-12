@@ -303,14 +303,16 @@ def process_STIX_Reports(imported_since, imported_until=None):
                             print "singleton (%s, %s) not created, already in database" % (type,value)
                             new_status = None
                             try:
-                                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
+                                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                                object_id=observable.id,
+                                                                active=True)
                                 status = status2x.status
                                 new_status,created = updateStatus(status,
                                                                   existing_tags = existing_tags,
                                                                   added_tags = added_tags)
 
                                 print "STATUS %s %s %s" % (status.id, new_status.id, created)
-
+                            #TODO: multiple objects found?
                             except ObjectDoesNotExist:
                                 status = createStatus(added_tags=added_tags)
                                 status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)

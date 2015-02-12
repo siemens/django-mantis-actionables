@@ -11,23 +11,33 @@
     <div class="grp-module">
       <h2 class="grp-collapse-handler">Context "{{ view.curr_context_name }}"</h2>
 
+<div class="grp-module grp-changelist-results">
 
-       <table>
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+        <thead>
          <tr>
            <th scope="col"  class="sortable column-identifier">
                {% render_table_ordering "type" "Type" %}
+
            </th>
-           <th>Subtype</th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "subtype" "Subtype" %}
 
-           <th>Value</th>
+           </th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "value" "Value" %}
 
-           <th>Tags</th>
+           </th>
+           <th class="middle">Tags</th>
          </tr>
+         </thead>
+        <tbody>
          {% for obs_info,tags in obs_tag_map.items %}
-         <tr>
+         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
            <td class="w-1 nowrap middle">{{ obs_info.0 }}</td>
            <td class="w-1 nowrap middle">{{ obs_info.1 }}</td>
-           <td>{{ obs_info.2 }}</td>
+           <td class="w-1 nowrap middle">{{ obs_info.2 }}</td>
            <td class="middle">
             <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
             {% if tags %}
@@ -40,6 +50,7 @@
           </td>
          </tr>
          {% endfor %}
+        </tbody>
        </table>
     </div>
   </div>
