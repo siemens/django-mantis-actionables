@@ -19,10 +19,11 @@
 #
 import ipaddr
 import re
+import logging
 
 from django.utils import timezone
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.contrib.contenttypes.models import ContentType
 
 from django.db.models import Q
@@ -34,6 +35,8 @@ from dingos.graph_traversal import follow_references
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, SPECIAL_TAGS_REGEX
 from .models import SingletonObservable, SingletonObservableType, SingletonObservableSubtype, Source, createStatus, Status, Status2X, Action, updateStatus,\
     Context, ActionableTag, ActionableTag2X, TagName, ActionableTaggingHistory
+
+logger = logging.getLogger(__name__)
 
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -199,7 +202,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
                 if results:
 
                     # Find out the pks of all facts for which we still need to lookup the tag inforamation
-                    print map(lambda x: x.get('fact.pk'), results)
+
                     fact_pks = set(map(lambda x: x.get('fact.pk'), results)) - set(fact2tag_map.keys())
                     # Lookup the tagging info and add it to the mapping
                     cols = ['id','tag_through__tag__name']
@@ -265,6 +268,8 @@ def process_STIX_Reports(imported_since, imported_until=None):
                         # Check if any tag is matching a specific pattern
                         for tag in added_tags:
                             if any(regex.match(tag) for regex in SPECIAL_TAGS_REGEX):
+                                logger.debug("Found special tag %s" % tag)
+
                                 curr_context,created = Context.objects.get_or_create(name=tag)
                                 curr_tagname,created = TagName.objects.get_or_create(name=tag)
                                 curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
@@ -286,49 +291,60 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
                         updated_tag_info = ",".join(updated_tag_info)
 
-                        #print "Updated %s" % updated_tag_info
-                        #print "Added %s" % added_tags
-                        #print "Found %s" % found_tags
 
                         observable.mantis_tags= updated_tag_info
                         observable.save()
 
                         if created:
-                            print "singleton created (%s,%s)" % (type,value)
+                            logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
                             new_status = createStatus(added_tags=added_tags)
                             status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
                             status2x.save()
 
                         else:
-                            print "singleton (%s, %s) not created, already in database" % (type,value)
+                            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
                             new_status = None
                             try:
                                 status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
                                                                 object_id=observable.id,
                                                                 active=True)
+
                                 status = status2x.status
                                 new_status,created = updateStatus(status,
                                                                   existing_tags = existing_tags,
                                                                   added_tags = added_tags)
 
-                                print "STATUS %s %s %s" % (status.id, new_status.id, created)
+                                logger.debug("STATUS %s %s %s" % (status.id, new_status.id, created))
                             #TODO: multiple objects found?
                             except ObjectDoesNotExist:
                                 status = createStatus(added_tags=added_tags)
                                 status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)
                                 status2x.save()
                                 created = False
+                            except MultipleObjectsReturned:
+                                logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
+                                status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                                     object_id=observable.id,
+                                                                     active=True).order_by('-timestamp')
+                                status2X = status2xes[0]
+
+                                status2xes.update(active=False)
+
+                                status2X.active=True
+                                status2X.save()
+
+                                status = status2x.status
+                                created = False
+
 
                             if created or (new_status and new_status.id != status.id):
-                                print "Updating status"
+                                logger.debug("Updating status")
 
                                 status2x.active = False
                                 status2x.save()
-                                print status2x
+
                                 status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
                                 status2x_new.save()
-                                print status2x_new
-                                print Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=observable.id,active=True)
 
                         source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
                                                                     iobject_fact_id=fact_pk,

@@ -421,7 +421,14 @@ class ActionablesContextView(BasicTemplateView):
 
 
     def get_context_data(self, **kwargs):
+
+
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
+
+        # TODO: Below, the tagged singleton observables are extracted
+        # via the Actionable tag. It would be more natural to
+        # query via SingletonObservable and aggregate the tags...
+
         cols = ['tag__name',\
                 'actionable_tag_thru__singleton_observables__type__name',\
                 'actionable_tag_thru__singleton_observables__subtype__name',\
@@ -430,6 +437,11 @@ class ActionablesContextView(BasicTemplateView):
         matching_observables = ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
                                         .values_list(*cols)
+
+        action_tags = ActionableTag.objects.filter(context__name=self.curr_context_name)
+
+        # TODO: This does not work because the order is thrown away below when
+        # aggregating the tags.
 
         if self.order_by:
             matching_observables.order_by(self.order_by)
