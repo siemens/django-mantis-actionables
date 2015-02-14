@@ -222,7 +222,7 @@ class SingletonObservableSubtype(models.Model):
 
 class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
-    subtype = models.ForeignKey(SingletonObservableSubtype,null=True)
+    subtype = models.ForeignKey(SingletonObservableSubtype)
     value = models.CharField(max_length=2048)
 
     status_thru = generic.GenericRelation(Status2X,related_query_name='singleton_observables')
@@ -236,6 +236,8 @@ class SingletonObservable(models.Model):
     class Meta:
         unique_together = ('type', 'subtype', 'value')
 
+    def __unicode__(self):
+        return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
 
 class SignatureType(models.Model):
     name = models.CharField(max_length=255)
@@ -282,6 +284,38 @@ class ActionableTag(models.Model):
                                 null=True)
     tag = models.ForeignKey(TagName)
 
+    @classmethod
+    def add(cls,
+            context_name_pairs,
+            tagged_things,
+            tagged_thing_pks,
+            tagged_thing_model,
+            user=None):
+        if tagged_things:
+            tagged_things = map(lambda x: (x.pk,x.__model__),tagged_things)
+        else:
+            tagged_things = map(lambda x: (x,tagged_thing_model),tagged_thing_pks)
+
+        actionable_tag_list = []
+        #contexts = CONSTR
+        #for (context,name) in context_name_pairs:
+
+        #curr_context,created = Context.objects.get_or_create(name=context_name)
+        #curr_tagname,created = TagName.objects.get_or_create(name=tag_name)
+
+        #curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
+        #                                                         tag=curr_tagname)
+        #curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
+        #                                                             object_id=singleton.id,
+        #                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+        #history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
+        #                                                                 action=ActionableTaggingHistory.ADD,
+        #                                                                 object_id=singleton.id,
+        #                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+        #                                                                 user=None)
+
+
+
 class ActionableTag2X(models.Model):
 
     actionable_tag = models.ForeignKey(ActionableTag,
@@ -313,11 +347,6 @@ class ActionableTaggingHistory(models.Model):
     tobject = generic.GenericForeignKey('content_type', 'object_id')
 
 
-
-
-
-
-
     # Status can be linked to different models:
     # - singleton Observables
     # - IDS Signatures
@@ -334,7 +363,16 @@ class ActionableTaggingHistory(models.Model):
 
         entry_list = []
         for object in objects:
-                entry_list.extend([ActionableTaggingHistory(action=action,user=user,comment=comment,object_id=object,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,tag=x) for x in tags])
+                entry_list.extend([ActionableTaggingHistory(action=action,user=user,comment=comment,object_id=object,
+                                                            content_type=content_type_registry[SingletonObservable],
+                                                            tag=x) for x in tags])
         ActionableTaggingHistory.objects.bulk_create(entry_list)
+
+
+
+content_type_registry = {}
+
+content_type_registry[SingletonObservable] = ContentType.objects.get_for_model(SingletonObservable)
+
 
 

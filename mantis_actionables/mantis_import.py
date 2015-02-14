@@ -21,6 +21,8 @@ import ipaddr
 import re
 import logging
 
+from itertools import chain
+
 from django.utils import timezone
 
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
@@ -57,6 +59,156 @@ for type in singleton_observable_subtypes_qs:
 tlp_color_map = {}
 for (id,color) in Source.TLP_KIND:
     tlp_color_map[color.lower()] = id
+
+
+
+
+def update_and_transfer_tags(fact_pks,user=None):
+
+    action = None
+
+    # Extract all tags associated with the facts and populate
+    # a mapping from fact pks to tags
+
+    fact2tag_map = {}
+
+    cols = ['id','tag_through__tag__name']
+    tag_fact_q = list(Fact.objects.filter(id__in = fact_pks).filter(tag_through__isnull=False).values(*cols))
+
+    for fact_tag_info in tag_fact_q:
+        tag_list = fact2tag_map.setdefault(fact_tag_info['id'],[])
+        tag_list.append(fact_tag_info['tag_through__tag__name'])
+
+
+    # Find out all singleton observables in the mantis_actionables app that
+    # have a link to one of the facts via a source object
+
+    affected_singletons = SingletonObservable.objects.filter(sources__iobject_fact__in=fact_pks).prefetch_related('sources')
+
+    # Update tag information in mantis_actionables for each of these
+    # singleton observables
+
+    for singleton in affected_singletons:
+        logger.debug("Treating singleton observable %s" % singleton)
+        # Determine the facts associated with this singleton
+        fact_ids = set(map(lambda x: x.iobject_fact_id, singleton.sources.all()))
+        # Use the fact2tag_map to determine all mantis tags associated with the
+        # singleton
+
+        found_tags = set(chain(*map(lambda x: fact2tag_map.get(x),fact_ids)))
+        logger.debug("Found the following mantis tags: %s" % found_tags)
+
+        # Extract the mantis tags that have been stored in mantis_actionables
+
+        if singleton.mantis_tags:
+            existing_tags = set(singleton.mantis_tags.split(','))
+        else:
+            existing_tags = set([])
+
+        logger.debug("Recorded dingos tags in mantis_actionables: %s" % existing_tags)
+
+        # calculate added and removed tags
+
+        added_tags = found_tags.difference(existing_tags)
+
+        logger.debug("Added dingos tags: %s" % added_tags)
+
+        removed_tags = existing_tags.difference(found_tags)
+
+        logger.debug("Removed dingos tags: %s" % removed_tags)
+
+
+        if added_tags or removed_tags:
+
+            # Tags have been added or removed -- possibly, we have to update the status
+            updated_tag_info = list(found_tags)
+            updated_tag_info.sort()
+
+            updated_tag_info = ",".join(updated_tag_info)
+
+            singleton.mantis_tags= updated_tag_info
+            singleton.save()
+
+
+
+            # We may have to update the status
+
+            try:
+                new_status = None
+                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                object_id=singleton.id,
+                                                active=True)
+
+                status = status2x.status
+                new_status,created = updateStatus(status=status,
+                                                  removed_tags = removed_tags,
+                                                  added_tags = added_tags)
+
+                logger.debug("Status %s created" % (status))
+
+
+            except ObjectDoesNotExist:
+                logger.critical("No status found for existing singleton observable. "
+                                "I create one, but this should not happen!!!")
+                status = createStatus(added_tags=added_tags,removed_tags=removed_tags)
+                if not action:
+                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
+                status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=singleton)
+                status2x.save()
+                created = False
+            except MultipleObjectsReturned:
+                logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
+                status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                     object_id=singleton.id,
+                                                     active=True).order_by('-timestamp')
+                status2X = status2xes[0]
+
+                status2xes.update(active=False)
+
+                status2X.active=True
+                status2X.save()
+
+                status = status2x.status
+                new_status,created = updateStatus(status=status,
+                                                  removed_tags = removed_tags,
+                                                  added_tags = added_tags)
+
+
+            if created or (new_status and new_status.id != status.id):
+                logger.debug("Updating status")
+
+                status2x.active = False
+                status2x.save()
+                if not action:
+                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
+                status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=singleton)
+                status2x_new.save()
+
+        # Check if any tag is matching a specific pattern
+        # TODO also treat removed tags
+        for tag in added_tags:
+            if any(regex.match(tag) for regex in SPECIAL_TAGS_REGEX):
+                logger.debug("Found special tag %s" % tag)
+
+                curr_context,created = Context.objects.get_or_create(name=tag)
+                curr_tagname,created = TagName.objects.get_or_create(name=tag)
+                curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
+                                                                         tag=curr_tagname)
+                curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
+                                                                             object_id=singleton.id,
+                                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
+                                                                                 action=ActionableTaggingHistory.ADD,
+                                                                                 object_id=singleton.id,
+                                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                                                 user=None)
+
+            # We take the union as new tag info
+
+
+
+
+
 
 def process_STIX_Reports(imported_since, imported_until=None):
     """
@@ -138,6 +290,10 @@ def process_STIX_Reports(imported_since, imported_until=None):
         - leave ORIGIN set to uncertain for now.
 
     """
+
+
+
+
     if not imported_until:
         imported_until = timezone.now()
     report_filters = []
@@ -204,6 +360,13 @@ def process_STIX_Reports(imported_since, imported_until=None):
                     # Find out the pks of all facts for which we still need to lookup the tag inforamation
 
                     fact_pks = set(map(lambda x: x.get('fact.pk'), results)) - set(fact2tag_map.keys())
+
+
+                    #print "Affected Singletons"
+                    #print affected_singletons
+
+
+
                     # Lookup the tagging info and add it to the mapping
                     cols = ['id','tag_through__tag__name']
                     tag_fact_q = list(Fact.objects.filter(id__in = fact_pks).filter(tag_through__isnull=False).values(*cols))
@@ -232,6 +395,10 @@ def process_STIX_Reports(imported_since, imported_until=None):
                         fact_value_pk = int(result['value.pk'])
                         type = result['actionable_type']
                         subtype = result['actionable_subtype']
+                        if not subtype:
+                            # If by mistake, subtype has been set to None,
+                            # make sure that it is set to ''
+                            subtype = ''
                         value = result['actionable_info']
 
                         if not (type and value):
@@ -243,108 +410,17 @@ def process_STIX_Reports(imported_since, imported_until=None):
                             singleton_observable_types[type] = obj.pk
                             type_pk = obj.pk
 
-                        if subtype:
-                            try:
-                                subtype_pk = singleton_observable_subtypes[subtype]
-                            except KeyError:
-                                obj, created = SingletonObservableSubtype.objects.get_or_create(name=subtype)
-                                singleton_observable_types[subtype] = obj.pk
-                                subtype_pk = obj.pk
 
-                        if subtype:
-                            observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,subtype_id=subtype_pk,value=value)
-                        else:
-                            observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,value=value)
-
-                        if observable.mantis_tags:
-                            existing_tags = set(observable.mantis_tags.split(','))
-                        else:
-                            existing_tags = []
-
-                        found_tags = set(fact2tag_map.get(fact_pk,[]))
-
-                        added_tags = found_tags.difference(existing_tags)
-
-                        # Check if any tag is matching a specific pattern
-                        for tag in added_tags:
-                            if any(regex.match(tag) for regex in SPECIAL_TAGS_REGEX):
-                                logger.debug("Found special tag %s" % tag)
-
-                                curr_context,created = Context.objects.get_or_create(name=tag)
-                                curr_tagname,created = TagName.objects.get_or_create(name=tag)
-                                curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
-                                                                                         tag=curr_tagname)
-                                curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
-                                                                                             object_id=observable.id,
-                                                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
-                                history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
-                                                                                                 action=ActionableTaggingHistory.ADD,
-                                                                                                 object_id=observable.id,
-                                                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                                                                 user=None)
+                        try:
+                            subtype_pk = singleton_observable_subtypes[subtype]
+                        except KeyError:
+                            print "Subtype %s" % subtype
+                            obj, created = SingletonObservableSubtype.objects.get_or_create(name=subtype)
+                            singleton_observable_types[subtype] = obj.pk
+                            subtype_pk = obj.pk
 
 
-                        # We take the union as new tag info
-
-                        updated_tag_info = list(found_tags.union(existing_tags))
-                        updated_tag_info.sort()
-
-                        updated_tag_info = ",".join(updated_tag_info)
-
-
-                        observable.mantis_tags= updated_tag_info
-                        observable.save()
-
-                        if created:
-                            logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-                            new_status = createStatus(added_tags=added_tags)
-                            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-                            status2x.save()
-
-                        else:
-                            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
-                            new_status = None
-                            try:
-                                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                                object_id=observable.id,
-                                                                active=True)
-
-                                status = status2x.status
-                                new_status,created = updateStatus(status,
-                                                                  existing_tags = existing_tags,
-                                                                  added_tags = added_tags)
-
-                                logger.debug("STATUS %s %s %s" % (status.id, new_status.id, created))
-                            #TODO: multiple objects found?
-                            except ObjectDoesNotExist:
-                                status = createStatus(added_tags=added_tags)
-                                status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)
-                                status2x.save()
-                                created = False
-                            except MultipleObjectsReturned:
-                                logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
-                                status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                                     object_id=observable.id,
-                                                                     active=True).order_by('-timestamp')
-                                status2X = status2xes[0]
-
-                                status2xes.update(active=False)
-
-                                status2X.active=True
-                                status2X.save()
-
-                                status = status2x.status
-                                created = False
-
-
-                            if created or (new_status and new_status.id != status.id):
-                                logger.debug("Updating status")
-
-                                status2x.active = False
-                                status2x.save()
-
-                                status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-                                status2x_new.save()
+                        observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,subtype_id=subtype_pk,value=value)
 
                         source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
                                                                     iobject_fact_id=fact_pk,
@@ -360,6 +436,125 @@ def process_STIX_Reports(imported_since, imported_until=None):
                             source.tlp = tlp_color
                             source.save()
 
+                        if created:
+                            logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
+                            new_status = createStatus(added_tags=[]) # TODO: pass source info
+                            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
+                            status2x.save()
 
+                        else:
+                            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+
+                        # if False:
+                        #
+                        #     if observable.mantis_tags:
+                        #         existing_tags = set(observable.mantis_tags.split(','))
+                        #     else:
+                        #         existing_tags = []
+                        #
+                        #     #update_and_transfer_tags(fact_pks=[fact_pk])
+                        #
+                        #     found_tags = set(fact2tag_map.get(fact_pk,[]))
+                        #
+                        #     added_tags = found_tags.difference(existing_tags)
+                        #
+                        #
+                        #
+                        #     # Check if any tag is matching a specific pattern
+                        #     for tag in added_tags:
+                        #         if any(regex.match(tag) for regex in SPECIAL_TAGS_REGEX):
+                        #             logger.debug("Found special tag %s" % tag)
+                        #
+                        #             curr_context,created = Context.objects.get_or_create(name=tag)
+                        #             curr_tagname,created = TagName.objects.get_or_create(name=tag)
+                        #             curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
+                        #                                                                      tag=curr_tagname)
+                        #             curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
+                        #                                                                          object_id=observable.id,
+                        #                                                                          content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                        #             history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
+                        #                                                                              action=ActionableTaggingHistory.ADD,
+                        #                                                                              object_id=observable.id,
+                        #                                                                              content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                        #                                                                              user=None)
+                        #
+                        #
+                        #     # We take the union as new tag info
+                        #
+                        #     updated_tag_info = list(found_tags.union(existing_tags))
+                        #     updated_tag_info.sort()
+                        #
+                        #     updated_tag_info = ",".join(updated_tag_info)
+                        #
+                        #
+                        #     observable.mantis_tags= updated_tag_info
+                        #     observable.save()
+                        #
+                        #     if created:
+                        #         logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
+                        #         new_status = createStatus(added_tags=added_tags)
+                        #         status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
+                        #         status2x.save()
+                        #
+                        #     else:
+                        #         logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+                        #         new_status = None
+                        #         try:
+                        #             status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                        #                                             object_id=observable.id,
+                        #                                             active=True)
+                        #
+                        #             status = status2x.status
+                        #             new_status,created = updateStatus(status,
+                        #                                               existing_tags = existing_tags,
+                        #                                               added_tags = added_tags)
+                        #
+                        #             logger.debug("STATUS %s %s %s" % (status.id, new_status.id, created))
+                        #         #TODO: multiple objects found?
+                        #         except ObjectDoesNotExist:
+                        #             status = createStatus(added_tags=added_tags)
+                        #             status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=observable)
+                        #             status2x.save()
+                        #             created = False
+                        #         except MultipleObjectsReturned:
+                        #             logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
+                        #             status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                        #                                                  object_id=observable.id,
+                        #                                                  active=True).order_by('-timestamp')
+                        #             status2X = status2xes[0]
+                        #
+                        #             status2xes.update(active=False)
+                        #
+                        #             status2X.active=True
+                        #             status2X.save()
+                        #
+                        #             status = status2x.status
+                        #             created = False
+                        #
+                        #
+                        #         if created or (new_status and new_status.id != status.id):
+                        #             logger.debug("Updating status")
+                        #
+                        #             status2x.active = False
+                        #             status2x.save()
+                        #
+                        #             status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
+                        #             status2x_new.save()
+                        #
+                        #     source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
+                        #                                                 iobject_fact_id=fact_pk,
+                        #                                                 iobject_factvalue_id=fact_value_pk,
+                        #                                                 top_level_iobject=top_level_iobj,
+                        #                                                 origin=Source.ORIGIN_UNCERTAIN,
+                        #                                                 object_id=observable.id,
+                        #                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
+                        #                                                 )
+                        #
+                        #     tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
+                        #     if not source.tlp == tlp_color:
+                        #         source.tlp = tlp_color
+                        #         source.save()
+
+                    update_and_transfer_tags(fact2tag_map.keys())
 
 
