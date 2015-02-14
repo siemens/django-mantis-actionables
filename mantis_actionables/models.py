@@ -21,12 +21,60 @@ from django.db import models
 from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes import generic
+from django.core.cache import caches
 
 from datetime import datetime
 
 from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, Identifier
+
+class CachingManager(models.Manager):
+    #manager to cache predefined queries
+    #if a query is not cached, CachingManager calls models.Manager
+
+    TIME_TO_LIVE = None
+
+    cache = caches['caching_manager']
+
+    cachable_queries = {
+        "SingletonObservableType" : ['name'],
+        "SingletonObservableSubType" : ['name'],
+        "Context" : ["name"],
+        "TagName" : ["name"],
+        "ActionableTag" : ["context_id","tag_id"]
+    }
+    #TODO sortieren
+
+    # def get_or_create(self, **kwargs):
+    #     return super(CachingManager, self).get_or_create(**kwargs)
+
+    def get_or_create(self, defaults=None, **kwargs):
+        sorted_keys = sorted(kwargs.keys())
+        sorted_arguments = tuple(sorted(kwargs.values()))
+        if sorted_keys == sorted(CachingManager.cachable_queries[self.model.__name__]):
+            if not CachingManager.cache.get(self.model.__name__):
+                all_objects = list(super(CachingManager, self).all())
+                value_dic = {}
+                for object in all_objects:
+                    # TODO: When the cache is filled for the first time, the line below
+                    # leads to a query for each single object. I thought that the
+                    # wrapping 'list(...)' above when getting all objects would take care of
+                    # this, but it does not... Can this be changed? otherwise, initializing
+                    # the cache is really expensive...
+                    sorted_values = tuple(sorted([getattr(object, attr) for attr in sorted_keys]))
+                    value_dic[sorted_values] = object
+                CachingManager.cache.set(self.model.__name__, value_dic, CachingManager.TIME_TO_LIVE)
+
+            inCache = CachingManager.cache.get(self.model.__name__)[sorted_arguments]
+            if inCache:
+                return inCache, False
+
+            else:
+                (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
+                CachingManager.cache.get(self.model.__name__)[sorted_arguments] = object
+                return object, created
+
 
 class Action(models.Model):
 
@@ -213,12 +261,20 @@ def updateStatus(status_obj,**kwargs):
 
 
 class SingletonObservableType(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255,unique=True)
     description = models.TextField(blank=True)
 
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
 class SingletonObservableSubtype(models.Model):
-    name = models.CharField(max_length=255,blank=True)
+    name = models.CharField(max_length=255,blank=True,unique=True)
     description = models.TextField(blank=True)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
 
 class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
@@ -270,10 +326,18 @@ class ImportInfo(models.Model):
 
 
 class Context(models.Model):
-    name = models.CharField(max_length=40)
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
 
 class TagName(models.Model):
-    name = models.CharField(max_length=40)
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
 
     def __unicode__(self):
         return "%s" % (self.name)
@@ -283,6 +347,9 @@ class ActionableTag(models.Model):
     context = models.ForeignKey(Context,
                                 null=True)
     tag = models.ForeignKey(TagName)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
 
     @classmethod
     def add(cls,
@@ -297,17 +364,18 @@ class ActionableTag(models.Model):
             tagged_things = map(lambda x: (x,tagged_thing_model),tagged_thing_pks)
 
         actionable_tag_list = []
-        #contexts = CONSTR
-        #for (context,name) in context_name_pairs:
 
-        #curr_context,created = Context.objects.get_or_create(name=context_name)
-        #curr_tagname,created = TagName.objects.get_or_create(name=tag_name)
+        for (context_name,tag_name) in context_name_pairs:
+            context,created = Context.cached_objects.get_or_create(name=context_name)
+            tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
+            actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
+                                                                                 tag_name_id=tag_name.pk)
+            actionable_tag_list.append(actionable_tag)
 
-        #curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
-        #                                                         tag=curr_tagname)
-        #curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
-        #                                                             object_id=singleton.id,
-        #                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+
+            #curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
+            #                                                                     object_id=singleton.id,
+            #                                                                     content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
         #history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
         #                                                                 action=ActionableTaggingHistory.ADD,
         #                                                                 object_id=singleton.id,
@@ -325,6 +393,13 @@ class ActionableTag2X(models.Model):
     content_type = models.ForeignKey(ContentType)
     object_id = models.PositiveIntegerField()
     tagged = generic.GenericForeignKey('content_type', 'object_id')
+
+    class Meta:
+        unique_together = ('actionable_tag_id',
+                           'content_type_id',
+                           'object_id',
+                           'tagged_id')
+
 
 
 class ActionableTaggingHistory(models.Model):
@@ -370,9 +445,11 @@ class ActionableTaggingHistory(models.Model):
 
 
 
+
 content_type_registry = {}
 
 content_type_registry[SingletonObservable] = ContentType.objects.get_for_model(SingletonObservable)
+
 
 
 
