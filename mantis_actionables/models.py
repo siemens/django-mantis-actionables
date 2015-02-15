@@ -30,24 +30,46 @@ from django.utils import timezone
 from dingos.models import InfoObject, Fact, FactValue, Identifier
 
 class CachingManager(models.Manager):
-    #manager to cache predefined queries
-    #if a query is not cached, CachingManager calls models.Manager
+    """
+    For models that have a moderate amount of entries and are always queried
+    with ``get_or_create`` using the same argument(s) (usually, list-of-value definitions such as
+    types, namespaces, etc,) use this CachingManager to enable easy querying
+    while avoiding to hit the database every time.
+
+    To use for a model:
+
+    - include model name and query for which a cache is to be maintained in
+      the mapping 'cachable_queries' as follows::
+          cachable_queries = {
+                              # Make sure that the query arguments below are given in alphabetical order!!!
+                              ...
+                              "ActionableTag" : ["context_id","tag_id"]
+                              ...
+                            }
+
+      So queries of form ``get_or_create(context_id=bla,tag_id=bla)
+      can now be answered from the cache
+    - include the cached manager in the model definition as follows::
+
+         objects = models.Manager()
+         cached_objects = CachingManager()
+
+      and use ``ActionableTag.cached_objects.get_or_create(...)`` for the query.
+
+    """
 
     TIME_TO_LIVE = None
 
     cache = caches['caching_manager']
 
     cachable_queries = {
+        # Make sure that the query arguments below are given in alphabetical order!!!
         "SingletonObservableType" : ['name'],
         "SingletonObservableSubType" : ['name'],
         "Context" : ["name"],
         "TagName" : ["name"],
         "ActionableTag" : ["context_id","tag_id"]
     }
-    #TODO sortieren
-
-    # def get_or_create(self, **kwargs):
-    #     return super(CachingManager, self).get_or_create(**kwargs)
 
     def get_or_create(self, defaults=None, **kwargs):
         sorted_keys = sorted(kwargs.keys())
@@ -66,22 +88,19 @@ class CachingManager(models.Manager):
                     value_dic[sorted_values] = object
                 CachingManager.cache.set(self.model.__name__, value_dic, CachingManager.TIME_TO_LIVE)
 
-            print sorted_arguments
+
             inCache = CachingManager.cache.get(self.model.__name__).get(sorted_arguments)
-            print "Found %s" % inCache
+
             if inCache:
                 return inCache, False
 
             else:
-                print "Creating %s %s" % (defaults,kwargs)
                 (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
                 CachingManager.cache.get(self.model.__name__)[sorted_arguments] = object
-                print "Returned %s" % object
                 return object, created
         else:
-            print "Could not find caching for query %s" % sorted_arguments
             (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
-            print "Returning %s,%s" % (object,created)
+
 
 
 class Action(models.Model):
@@ -363,24 +382,32 @@ class ActionableTag(models.Model):
     def bulk_action(cls,
                     action,
                     context_name_pairs,
+
+                    # TODO: once we want to generalize, allowing tagging of other
+                    # things, we need to also the model for each pk
                     thing_to_tag_pks,
+
                     user=None,
                     comment=''):
         """
         Input:
+        - action: either 'add' or 'remove'
         - context_name_pairs: list of pairs '('context','tag_name')' denoting
-          the actionable tags to add
+          the actionable tags to added or removed
+        - things_to_tag_pks: pks of SingletonObjects to be tagged
+        - user: user object of user doing the tagging
+        - comment: comment string
+
+        The function carries out the action (addition or removing) of the
+        provided actionable tags and also fills in the actionable-tag history.
+
 
         """
 
+        # The content type must be defined here: defining it outside the function
+        # leads to a circular import
         CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
-        # If things to be tagged are passed as objects, extract the pk
-        # TODO: once we want to generalize, allowing tagging of other
-        # things, we need to also extract the model for each pk
-        # and act upon it
 
-        #if things_to_tag:
-        #    things_to_tag_pks = map(lambda x: x.pk,things_to_tag)
 
         # Create the list of actionable tags for this bulk action
         actionable_tag_list = []
@@ -486,10 +513,3 @@ class ActionableTaggingHistory(models.Model):
 
 
 
-#content_type_registry = {}
-
-#content_type_registry[SingletonObservable] = ContentType.objects.get_for_model(SingletonObservable)
-
-
-
-#
