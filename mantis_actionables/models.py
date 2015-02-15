@@ -66,14 +66,22 @@ class CachingManager(models.Manager):
                     value_dic[sorted_values] = object
                 CachingManager.cache.set(self.model.__name__, value_dic, CachingManager.TIME_TO_LIVE)
 
-            inCache = CachingManager.cache.get(self.model.__name__)[sorted_arguments]
+            print sorted_arguments
+            inCache = CachingManager.cache.get(self.model.__name__).get(sorted_arguments)
+            print "Found %s" % inCache
             if inCache:
                 return inCache, False
 
             else:
+                print "Creating %s %s" % (defaults,kwargs)
                 (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
                 CachingManager.cache.get(self.model.__name__)[sorted_arguments] = object
+                print "Returned %s" % object
                 return object, created
+        else:
+            print "Could not find caching for query %s" % sorted_arguments
+            (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
+            print "Returning %s,%s" % (object,created)
 
 
 class Action(models.Model):
@@ -355,7 +363,6 @@ class ActionableTag(models.Model):
     def bulk_action(cls,
                     action,
                     context_name_pairs,
-                    things_to_tag,
                     thing_to_tag_pks,
                     user=None,
                     comment=''):
@@ -365,21 +372,24 @@ class ActionableTag(models.Model):
           the actionable tags to add
 
         """
+
+        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
         # If things to be tagged are passed as objects, extract the pk
         # TODO: once we want to generalize, allowing tagging of other
         # things, we need to also extract the model for each pk
         # and act upon it
 
-        if things_to_tag:
-            things_to_tag_pks = map(lambda x: x.pk,things_to_tag)
+        #if things_to_tag:
+        #    things_to_tag_pks = map(lambda x: x.pk,things_to_tag)
 
         # Create the list of actionable tags for this bulk action
         actionable_tag_list = []
         for (context_name,tag_name) in context_name_pairs:
             context,created = Context.cached_objects.get_or_create(name=context_name)
             tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
+
             actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
-                                                                                 tag_name_id=tag_name.pk)
+                                                                                 tag_id=tag_name.pk)
             actionable_tag_list.append(actionable_tag)
 
         if action == 'add':
@@ -400,13 +410,13 @@ class ActionableTag(models.Model):
                     actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
                                                                         object_id=pk,
                                                                         content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
-                    if actionable_tag_2x:
-                        actionable_tag_2x.delete()
+                    if actionable_tag_2xs:
+                        actionable_tag_2xs.delete()
                         affected_tags.append(actionable_tag)
 
             ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
                                                                  affected_tags,
-                                                                 things_to_tag_pks,
+                                                                 thing_to_tag_pks,
                                                                  user,
                                                                  comment)
 
@@ -458,17 +468,17 @@ class ActionableTaggingHistory(models.Model):
     marked = generic.GenericForeignKey('content_type', 'object_id')
 
     @classmethod
-    def bulk_create_tagging_history(cls,action,tags,things_to_tag_pks,user,comment):
+    def bulk_create_tagging_history(cls,action_flag,tags,things_to_tag_pks,user,comment):
         # TODO:
         # CONTENT_TYPE_SINGLETON cannot be defined outside this,
         # because it leads to a circular import ...
         CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
-        action = getattr(cls,action.upper())
+        #action = getattr(cls,action.upper())
 
         entry_list = []
         for pk in things_to_tag_pks:
-                entry_list.extend([ActionableTaggingHistory(action=action,user=user,comment=comment,object_id=pk,
+                entry_list.extend([ActionableTaggingHistory(action=action_flag,user=user,comment=comment,object_id=pk,
                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
                                                             tag=x) for x in tags])
         ActionableTaggingHistory.objects.bulk_create(entry_list)

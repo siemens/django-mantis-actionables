@@ -357,25 +357,32 @@ def processActionablesTagging(data,**kwargs):
         user_data = data.get('user_data',None)
 
         if tags:
-            tag_name_obj = []
-            context,created = Context.objects.get_or_create(name=curr_context)
+            #tag_name_obj = []
+            #context,created = Context.objects.get_or_create(name=curr_context)
             if action == 'add':
-                for tag in tags:
-                    curr_tag, created = TagName.objects.get_or_create(name=tag)
-                    actionable_tag,created = ActionableTag.objects.get_or_create(context=context,
-                                                                         tag=curr_tag)
-                    tag_name_obj.append(actionable_tag)
-                    for pk in obj_pks:
-                        actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
-                                                                          object_id=pk,
-                                                                          content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                context_name_pairs = map(lambda x: (curr_context,x), tags)
+                comment = '' if not user_data else user_data
+                ActionableTag.bulk_action(action = 'add',
+                                          context_name_pairs=context_name_pairs,
+                                          thing_to_tag_pks=obj_pks,
+                                          user=user,
+                                          comment=comment)
+                #for tag in tags:
+                #    curr_tag, created = TagName.objects.get_or_create(name=tag)
+                #    actionable_tag,created = ActionableTag.objects.get_or_create(context=context,
+                #                                                         tag=curr_tag)
+                #    tag_name_obj.append(actionable_tag)
+                #    for pk in obj_pks:
+                #        actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
+                #                                                          object_id=pk,
+                #                                                          content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
 
-                curr_context = show_TagDisplay([tag],'actionables',isEditable=True)
+                curr_context = show_TagDisplay(tags,'actionables',isEditable=True)
                 tag_html = render_to_string('dingos/%s/includes/_TagDisplay.html' % (DINGOS_TEMPLATE_FAMILY),curr_context)
                 res['html'] = tag_html
                 res['status'] = 0
                 comment = '' if not user_data else user_data
-                ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,comment)
+                #ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,comment)
 
             elif action == 'remove':
                 if user_data is None:
@@ -389,16 +396,23 @@ def processActionablesTagging(data,**kwargs):
                         res['status'] = -1
                         res['err'] = "no comment provided - tag not deleted"
                     else:
-                        for tag in tags:
-                            curr_tag = TagName.objects.get(name=tag)
-                            actionable_tag = ActionableTag.objects.get(context=context,
-                                                               tag=curr_tag)
-                            tag_name_obj.append(actionable_tag)
-                            for pk in obj_pks:
-                                ActionableTag2X.objects.get(actionable_tag=actionable_tag,
-                                                    object_id=pk,
-                                                    content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).delete()
-                        ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,user_data)
+                        context_name_pairs = map(lambda x: (curr_context,x), tags)
+                        comment = '' if not user_data else user_data
+                        ActionableTag.bulk_action(action = 'remove',
+                                          context_name_pairs=context_name_pairs,
+                                          thing_to_tag_pks=obj_pks,
+                                          user=user,
+                                          comment=comment)
+                        #for tag in tags:
+                        #    curr_tag = TagName.objects.get(name=tag)
+                        #    actionable_tag = ActionableTag.objects.get(context=context,
+                        #                                       tag=curr_tag)
+                        #    tag_name_obj.append(actionable_tag)
+                        #    for pk in obj_pks:
+                        #        ActionableTag2X.objects.get(actionable_tag=actionable_tag,
+                        #                            object_id=pk,
+                        #                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).delete()
+                        #ActionableTaggingHistory.bulk_create_tagging_history(action,tag_name_obj,obj_pks,user,user_data)
                         res['status'] = 0
         else:
             res['err'] = 'no tag provided'
