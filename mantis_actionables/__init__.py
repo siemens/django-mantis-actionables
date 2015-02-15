@@ -41,7 +41,7 @@ DASHBOARD_CONTENTS = {
 
 }
 
-SPECIAL_TAGS_REGEX = [
-    re.compile(r"^INVES-")
+MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX = [
+    re.compile(r"^INVES-[0-9]+(-[A-Za-z0-9]+)?$")
 ]
 

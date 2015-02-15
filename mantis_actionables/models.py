@@ -280,10 +280,10 @@ def createStatus(**kwargs):
                                                       priority=Status.PRIORITY_UNCERTAIN)
     return new_status
 
-def updateStatus(status_obj,**kwargs):
-    new_status, created = Status.objects.get_or_create(false_positive=status_obj.false_positive,
-                                                       active=status_obj.active,
-                                                       priority=status_obj.priority)
+def updateStatus(status,**kwargs):
+    new_status, created = Status.objects.get_or_create(false_positive=status.false_positive,
+                                                       active=status.active,
+                                                       priority=status.priority)
     return (new_status,created)
 
 
@@ -425,21 +425,31 @@ class ActionableTag(models.Model):
             action_flag = ActionableTaggingHistory.REMOVE
         for pk in thing_to_tag_pks:
             for actionable_tag in actionable_tag_list:
-                affected_tags = []
+                affected_tags = set([])
                 if action_flag == ActionableTaggingHistory.ADD:
                     actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
                                                                                       object_id=pk,
                                                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
                     if created:
-                        affected_tags.append(actionable_tag)
+                        affected_tags.add(actionable_tag)
 
                 elif action_flag == ActionableTaggingHistory.REMOVE:
                     actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
                                                                         object_id=pk,
                                                                         content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+
                     if actionable_tag_2xs:
                         actionable_tag_2xs.delete()
-                        affected_tags.append(actionable_tag)
+                        affected_tags.add(actionable_tag)
+                    if actionable_tag.tag.name == actionable_tag.context.name:
+                        # This tag marks an context and the whole context is deleted:
+                        # We therefore need to remove all tags in the context
+                        actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag__context=actionable_tag.context,
+                                                                            object_id=pk,
+                                                                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                        for actionable_tag_2x in actionable_tag_2xs:
+                            affected_tags.add(actionable_tag_2x.actionable_tag)
+                        actionable_tag_2xs.delete()
 
             ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
                                                                  affected_tags,

@@ -340,8 +340,6 @@ def processActionablesTagging(data,**kwargs):
     action = data['action']
     obj_pks = data['objects']
     tags = listify(data['tags'])
-    print "Passed tags %s" % tags
-
     res = {}
     ACTIONS = ['add', 'remove']
     if action in ACTIONS:
