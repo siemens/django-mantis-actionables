@@ -86,7 +86,7 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
     called without user information).
     """
     fact_content_type = ContentType.objects.get_for_model(Fact)
-    just_now = timezone.now() - timedelta(milliseconds=500)
+    just_now = timezone.now() - timedelta(milliseconds=2500)
 
     comment = ''
 
@@ -110,6 +110,8 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
                                                                           tag__name = dingos_tag_name,
                                                                           object_id__in = fact_pks,
                                                                           content_type = fact_content_type).order_by('-timestamp')
+    result_user = None
+
     if likely_dingos_tag_history_entries:
         likely_matching_entry = likely_dingos_tag_history_entries[0]
         if user and likely_matching_entry.timestamp >= just_now:
@@ -120,9 +122,15 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
         else:
             # Otherwise, we at least inform the reader that the comment
             # was derived
-            comment = "%s (Comment derived automatically from DINGOS tag)" % likely_matching_entry.comment
-        if likely_matching_entry.user:
+            if likely_matching_entry.comment:
+
+                comment = "%s (Comment and user derived automatically from DINGOS tag)" % likely_matching_entry.comment
+                result_user = likely_matching_entry.user
+            else:
+                comment = ""
+        if (not result_user) and likely_matching_entry.user and likely_matching_entry.user != user:
             result_user = likely_matching_entry.user
+            comment = "(User derived automatically from DINGOS tag history)"
         else:
             result_user = user
 
@@ -202,7 +210,10 @@ def update_and_transfer_tags(fact_pks,user=None):
         # Use the fact2tag_map to determine all mantis tags associated with the
         # singleton
 
-        found_tags = set(chain(*map(lambda x: fact2tag_map.get(x),fact_ids)))
+        logger.debug("Found the following fact ids: %s" % fact_ids)
+
+        found_tags = set(chain(*map(lambda x: fact2tag_map.get(x,[]),fact_ids)))
+
         logger.debug("Found the following mantis tags: %s" % found_tags)
 
         # Extract the mantis tags that have been stored in mantis_actionables
@@ -392,6 +403,11 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
 
     """
 
+    if top_level_iobjs:
+        if isinstance(top_level_iobjs[0],InfoObject):
+            top_level_iobj_pks = map(lambda x:x.pk, top_level_iobjs)
+        else:
+            top_level_iobj_pks = top_level_iobjs
 
     # We leave the skip terms away since we are going in down direction,
     # so the danger that we pull in lot's of stuff we do not want
@@ -412,8 +428,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
 
     action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
 
-    for top_level_iobj in top_level_iobjs:
-        graph= follow_references([top_level_iobj.id],
+    for top_level_iobj_pk in top_level_iobj_pks:
+        graph= follow_references([top_level_iobj_pk],
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
@@ -471,8 +487,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
                 if not (type and value):
                     continue
 
-                singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)
-                singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)
+                singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
+                singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
 
                 observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
                                                                                 subtype=singleton_subtype_obj,
@@ -481,7 +497,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
                 source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
                                                                iobject_fact_id=fact_pk,
                                                                iobject_factvalue_id=fact_value_pk,
-                                                               top_level_iobject=top_level_iobj,
+                                                               top_level_iobject_id=top_level_iobj_pk,
                                                                origin=Source.ORIGIN_UNCERTAIN,
                                                                object_id=observable.id,
                                                                content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE

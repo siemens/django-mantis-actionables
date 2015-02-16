@@ -65,7 +65,7 @@ class CachingManager(models.Manager):
     cachable_queries = {
         # Make sure that the query arguments below are given in alphabetical order!!!
         "SingletonObservableType" : ['name'],
-        "SingletonObservableSubType" : ['name'],
+        "SingletonObservableSubtype" : ['name'],
         "Context" : ["name"],
         "TagName" : ["name"],
         "ActionableTag" : ["context_id","tag_id"]
