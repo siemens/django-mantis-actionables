@@ -330,64 +330,45 @@ def update_and_transfer_tags(fact_pks,user=None):
                                               comment=comment)
 
 
-def process_STIX_Reports(imported_since, imported_until=None):
+
+
+def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
     """
-    Process all STIX reports that have been imported into MANTIS in a certain time slice.
+    The function carries out the following actions:
 
-    process_STIX_Reports carries out the following steps:
+    - For each object passed to the function, it determines the
+      downward reachability graph and then carries out the
+      the imports specified in ACTIVE_MANTIS_EXPORTERS as specified in ``__init__.py``
+      on these graphs.
 
-    - it performs a query that yields all STIX reports that have been imported
-      since the date-time provided by the parameter ``imported_since`` and no later
-      than the date-time provided by the parameter ``imported_until`` (if no
-      such date has been provided, then all reports up to the present time are taken.
+      The default setting for the called importers is thus:
 
-      What consitutes a STIX report is configurable via the setting
-
-      STIX_REPORT_FAMILY_AND_TYPES specified in ``__init__.py``. The default
-      setting is thus::
-
-         STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
-                                          'iobject_type_family': 'stix.mitre.org'}]
-
-      (Once STIX 1.2 is released, we may have to add STIX_Report here and probably
-      add some intelligence to disregard packages if they contain a report object...)
-
-    - For each object yielded by the query for STIX reports, the fucntion carries
-      out the imports specified in ACTIVE_MANTIS_EXPORTERS as specified in ``__init__.py``.
-      The default setting is thus:
-
-         ACTIVE_MANTIS_EXPORTERS = ['hashes','ips','fqdns']
+         ACTIVE_MANTIS_EXPORTERS = ['cybox_all']
 
       The  values in the list refer to the name specified in
       ``mantis_stix_importer.STIX_POSTPROCESSOR_REGISTRY``.
 
-      Implementation hints for Philipp:
+    - The function concatenates the results of all exporter runs. In order to
+      be imported into mantis_actionables, a single exporter result must
+      yield the following keys::
 
-      - See the code in``dingos.views.InfoObjectExportsView`` for how to run an exporter.
-      - Call the exporter with argument "override_columns = 'ALMOST_ALL'" to
-        get complete information.
+        {
 
-    - The function concatenates the results of all exporter runs. Here is an example
-      single result of an IP export:
+         (...)
 
-         {
-          "category": "ipv4-addr",
-          "object.import_timestamp": "2014-09-04 14:26:32.327645+00:00",
-          "exporter": "IPs",
-          "ip": "127.0.0.1",
-          "object.name": "127.0.0.1 (1 facts)",
-          "object.url": "/mantis/View/InfoObject/446977/",
-          "object.object_family": "cybox.mitre.org",
-          "object.identifier.namespace": "cert.test.siemens.com",
-          "object.pk": "446977",
-          "object.timestamp": "2014-09-04 14:26:32.254963+00:00",
-          "apply_condition": "",
-          "object.object_type.name": "AddressObject",
-          "fact.pk": "225652",
-          "value.pk": "123456",
-          "object.identifier.uid": "Address-260a70ed-8f68-4de4-e760-61176b3ad20c-06368",
-          "condition": ""
-         }
+         "actionable_type": <e.g., 'Hash'>
+         "actionable_subtype": <e.g., 'MD5', can be empty for other types>
+         "actionable_info": <basic information, e.g., hash value>
+
+         (...)
+
+         "object.pk": <pk of information object in which fact was found from
+                       which the actionable info has been derived>
+         "fact.pk": <pk of fact from which actionable info was derived>
+         "value.pk": <pk of value from which actionable info was derived>
+
+
+        },
 
     - The function extracts the set of all 'object.pk's. It then queries MANTIS for all
       facts in marking objects that are associated as markings with one of these objects
@@ -412,28 +393,6 @@ def process_STIX_Reports(imported_since, imported_until=None):
     """
 
 
-
-
-    if not imported_until:
-        imported_until = timezone.now()
-    report_filters = []
-    for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
-        report_filters.append({
-            'iobject_type__name' : report_filter['iobject_type'],
-            'iobject_family__name' : report_filter['iobject_type_family']
-        })
-    queries = [Q(**filter) for filter in report_filters]
-    query = queries.pop()
-
-    # Or the Q object with the ones remaining in the list
-    for item in queries:
-        query |= item
-    top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                              create_timestamp__lte=imported_until)
-    top_level_iobjs = list(top_level_iobjs.filter(query))
-
-
-
     # We leave the skip terms away since we are going in down direction,
     # so the danger that we pull in lot's of stuff we do not want
     # is lower
@@ -442,15 +401,16 @@ def process_STIX_Reports(imported_since, imported_until=None):
 
     skip_terms = []
 
-    #tag_iobj_cache = {}
 
     # Mapping from fact ids to tags
 
     fact2tag_map = {}
 
+    # Mapping information objects to TLP information
+
     iobj2tlp_map = {}
 
-    action = Action.objects.get_or_create(user=None,comment="Actionables Import")[0]
+    action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
 
     for top_level_iobj in top_level_iobjs:
         graph= follow_references([top_level_iobj.id],
@@ -458,6 +418,9 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                  direction='down'
                                  )
         postprocessor=None
+
+        results = []
+
         for exporter in ACTIVE_MANTIS_EXPORTERS:
 
             postprocessor_classes = POSTPROCESSOR_REGISTRY[exporter]
@@ -473,98 +436,113 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                     # each iteration.
                                                     details_obj = postprocessor
                                                     )
-                (content_type,results) = postprocessor.export(override_columns='EXPORTER', format='dict')
+                (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='dict')
 
-                if results:
+                results += part_results
 
-                    # Find out the pks of all facts for which we still need to lookup the tag inforamation
+        if results:
 
-                    fact_pks = set(map(lambda x: x.get('fact.pk'), results)) - set(fact2tag_map.keys())
+            containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
 
+            select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
+            color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
+                .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
+                        marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
+                .values_list(*select_columns)
 
-                    #print "Affected Singletons"
-                    #print affected_singletons
+            for iobject_tlp_info in color_qs:
+                iobj2tlp_map[iobject_tlp_info[0]] = iobject_tlp_info[1].lower()
 
+            for result in results:
 
+                iobj_pk = int(result['object.pk'])
+                fact_pk = int(result['fact.pk'])
+                fact_value_pk = int(result['value.pk'])
+                type = result.get('actionable_type','')
+                subtype = result.get('actionable_subtype','')
 
-                    # Lookup the tagging info and add it to the mapping
-                    cols = ['id','tag_through__tag__name']
-                    tag_fact_q = list(Fact.objects.filter(id__in = fact_pks).filter(tag_through__isnull=False).values(*cols))
-                    for fact_tag_info in tag_fact_q:
-                        tag_list = fact2tag_map.setdefault(fact_tag_info['id'],[])
-                        tag_list.append(fact_tag_info['tag_through__tag__name'])
+                if not subtype:
+                    # If by mistake, subtype has been set to None,
+                    # make sure that it is set to ''
+                    subtype = ''
 
-                    # Find out the pks of all containing infoobjects for which we still need to lookup the
-                    # marking TLP information
+                value = result.get('actionable_info','')
 
-                    containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results)) - set(iobj2tlp_map.keys())
+                if not (type and value):
+                    continue
 
-                    select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
-                    color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
-                        .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure', marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
-                        .values_list(*select_columns)
+                singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)
+                singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)
 
-                    for iobject_tlp_info in color_qs:
-                        iobj2tlp_map[iobject_tlp_info[0]] = iobject_tlp_info[1].lower()
+                observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
+                                                                                subtype=singleton_subtype_obj,
+                                                                                value=value)
 
+                source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
+                                                               iobject_fact_id=fact_pk,
+                                                               iobject_factvalue_id=fact_value_pk,
+                                                               top_level_iobject=top_level_iobj,
+                                                               origin=Source.ORIGIN_UNCERTAIN,
+                                                               object_id=observable.id,
+                                                               content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
+                                                            )
 
-                    for result in results:
+                tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
+                if not source.tlp == tlp_color:
+                    source.tlp = tlp_color
+                    source.save()
 
-                        iobj_pk = int(result['object.pk'])
-                        fact_pk = int(result['fact.pk'])
-                        fact_value_pk = int(result['value.pk'])
-                        type = result['actionable_type']
-                        subtype = result['actionable_subtype']
-                        if not subtype:
-                            # If by mistake, subtype has been set to None,
-                            # make sure that it is set to ''
-                            subtype = ''
-                        value = result['actionable_info']
+                if created:
+                    logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
+                    new_status = createStatus(added_tags=[]) # TODO: pass source info
+                    status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
+                    status2x.save()
 
-                        if not (type and value):
-                            continue
-                        try:
-                            type_pk = singleton_observable_types[type]
-                        except KeyError:
-                            obj, created = SingletonObservableType.objects.get_or_create(name=type)
-                            singleton_observable_types[type] = obj.pk
-                            type_pk = obj.pk
+                else:
+                    logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
 
-
-                        try:
-                            subtype_pk = singleton_observable_subtypes[subtype]
-                        except KeyError:
-                            print "Subtype %s" % subtype
-                            obj, created = SingletonObservableSubtype.objects.get_or_create(name=subtype)
-                            singleton_observable_types[subtype] = obj.pk
-                            subtype_pk = obj.pk
-
-
-                        observable, created = SingletonObservable.objects.get_or_create(type_id=type_pk,subtype_id=subtype_pk,value=value)
-
-                        source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
-                                                                    iobject_fact_id=fact_pk,
-                                                                    iobject_factvalue_id=fact_value_pk,
-                                                                    top_level_iobject=top_level_iobj,
-                                                                    origin=Source.ORIGIN_UNCERTAIN,
-                                                                    object_id=observable.id,
-                                                                    content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
-                                                                    )
-
-                        tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
-                        if not source.tlp == tlp_color:
-                            source.tlp = tlp_color
-                            source.save()
-
-                        if created:
-                            logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-                            new_status = createStatus(added_tags=[]) # TODO: pass source info
-                            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-                            status2x.save()
-
-                        else:
-                            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
-
-                    update_and_transfer_tags(fact2tag_map.keys())
+            fact_pks = set(map(lambda x: x.get('fact.pk'), results))
+            update_and_transfer_tags(fact_pks)
 
 
+def process_STIX_Reports(imported_since, imported_until=None):
+    """
+    Process all STIX reports that have been imported into MANTIS in a certain time slice:
+
+    - It performs a query that yields all STIX reports that have been imported
+      since the date-time provided by the parameter ``imported_since`` and no later
+      than the date-time provided by the parameter ``imported_until`` (if no
+      such date has been provided, then all reports up to the present time are taken.
+
+      What consitutes a STIX report is configurable via the setting
+
+      STIX_REPORT_FAMILY_AND_TYPES specified in ``__init__.py``. The default
+      setting is thus::
+
+         STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
+                                          'iobject_type_family': 'stix.mitre.org'}]
+
+      (Once STIX 1.2 is released, we may have to add STIX_Report here and probably
+      add some intelligence to disregard packages if they contain a report object...)
+
+    - Call the import function on the determined STIX reports
+
+    """
+    if not imported_until:
+        imported_until = timezone.now()
+    report_filters = []
+    for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
+        report_filters.append({
+            'iobject_type__name' : report_filter['iobject_type'],
+            'iobject_family__name' : report_filter['iobject_type_family']
+        })
+    queries = [Q(**filter) for filter in report_filters]
+    query = queries.pop()
+
+    # Or the Q object with the ones remaining in the list
+    for item in queries:
+        query |= item
+    top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
+                                                create_timestamp__lte=imported_until)
+    top_level_iobjs = list(top_level_iobjs.filter(query))
+    return import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
