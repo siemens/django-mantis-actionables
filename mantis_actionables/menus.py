@@ -1,4 +1,3 @@
-__author__ = 'Philipp Lang'
 # Copyright (c) Siemens AG, 2014
 #
 # This file is part of MANTIS.  MANTIS is free software: you can

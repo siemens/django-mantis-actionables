@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 
 # Copyright (c) Siemens AG, 2015
@@ -17,11 +16,10 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-import ipaddr
-import re
+
 import logging
 
-from django.utils import timezone
+
 from datetime import timedelta
 
 from itertools import chain
@@ -38,8 +36,15 @@ from dingos.view_classes import POSTPROCESSOR_REGISTRY
 from dingos.graph_traversal import follow_references
 
 from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
-from .models import SingletonObservable, SingletonObservableType, SingletonObservableSubtype, Source, createStatus, Status, Status2X, Action, updateStatus,\
-    Context, ActionableTag, ActionableTag2X, TagName, ActionableTaggingHistory
+from .models import SingletonObservable,\
+    SingletonObservableType, \
+    SingletonObservableSubtype, \
+    Source, \
+    Status2X, \
+    Action, \
+    ActionableTag
+
+from .status_management import createStatus, updateStatus
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +70,110 @@ for (id,color) in Source.TLP_KIND:
 
 
 
+def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name,fact_pks):
+    """
+    When importing changes in dingos-tags that lead to changes
+    in the mantis_actionable tags, we want to provide an appropriate comment
+    also in the history of the actionable tags.
+
+    Problem: since the tag transfer may happen at any time and
+    the set of dingos tags associated with a singleton observable
+    is determined 'by bulk', we must try to find out the likely comment
+    from the history of the dingos tags.
+
+    We do this by filtering the dingos thag history for fitting dingos tag history items;
+    if we find a likely item, we take the associated comment (and user, if this function was
+    called without user information).
+    """
+    fact_content_type = ContentType.objects.get_for_model(Fact)
+    just_now = timezone.now() - timedelta(milliseconds=500)
+
+    comment = ''
+
+    result_user = None
+
+    if user:
+        # If a user has been provided to the function, the function has been
+        # called during a tagging operation carried out by a user rather than
+        # an import run: hence we look through history entries by that
+        # particular user:
+
+        likely_dingos_tag_history_entries = TaggingHistory.objects.filter(user=user,
+                                                                          action = action_flag,
+                                                                          tag__name = dingos_tag_name,
+                                                                          object_id__in = fact_pks,
+                                                                          content_type = fact_content_type).order_by('-timestamp')
+    else:
+        # otherwise, we just look for the most recent history entries concerning that particular
+        # tag
+        likely_dingos_tag_history_entries = TaggingHistory.objects.filter(action = action_flag,
+                                                                          tag__name = dingos_tag_name,
+                                                                          object_id__in = fact_pks,
+                                                                          content_type = fact_content_type).order_by('-timestamp')
+    if likely_dingos_tag_history_entries:
+        likely_matching_entry = likely_dingos_tag_history_entries[0]
+        if user and likely_matching_entry.timestamp >= just_now:
+            # If we find a tag history item due to the current user and
+            # really really recent, we can be very sure that this is really
+            # the history item that caused the tag change
+            comment = likely_matching_entry.comment
+        else:
+            # Otherwise, we at least inform the reader that the comment
+            # was derived
+            comment = "%s (Comment derived automatically from DINGOS tag)" % likely_matching_entry.comment
+        if likely_matching_entry.user:
+            result_user = likely_matching_entry.user
+        else:
+            result_user = user
+
+    return (result_user,comment)
+
 
 def update_and_transfer_tags(fact_pks,user=None):
+
+    """
+    Given a list or set of fact primary keys, the function does the following:
+
+    - It gathers all the SingletonObjects that have a source in which a fact
+      with one of the passed primary keys is referenced (upon import from MANTIS
+      into mantis_actionables, each singleton observable that is detected during
+      the import is linked with a source object that references the fact from
+      which the singleton observable was derived)
+
+    - For each of the singleton observables thus found, it does the following:
+
+      - It calculates all dingos tags associated with each of the singleton objects
+        by taking the union of all dingos tags associated with the facts referenced
+        by sources of that particular singleton
+
+      - It compares the set of dingos tags that has been stored with each singleton
+        observable with the found of dingos tags that has now been found, thus
+        finding out whether tags have been added or removed.
+
+      - It stores the current set of dingos tags with the singleton observable.
+
+      - If there has been a change in the set of tags, it calls a function
+        that may update the status of the singleton observable.
+
+      - It examines each added or removed tag and sees whether that has the
+        form of an actionable context (actionable tags comprise a context
+        and a name). If that is the case, it calls the actionable tag management
+        function for the singleton observable with add/remove command and
+        thus transfers the addition/removal of a context in dingos into
+        mantis_actionables.
+
+    """
+
+    # In case a status change is carried out, an action object will
+    # be created and referenced by the status change. During the
+    # run of this function, we only create a single action object
+    # which will then be associated with all status changes
+    # due to this particular run of the function.
 
     action = None
 
     # Extract all tags associated with the facts and populate
-    # a mapping from fact pks to tags
+    # a mapping from fact pks to dingos tags
 
     fact2tag_map = {}
 
@@ -81,6 +183,8 @@ def update_and_transfer_tags(fact_pks,user=None):
     for fact_tag_info in tag_fact_q:
         tag_list = fact2tag_map.setdefault(fact_tag_info['id'],[])
         tag_list.append(fact_tag_info['tag_through__tag__name'])
+
+    logger.debug("Calculated fact2tag_map as %s" % fact2tag_map)
 
     # Find out all singleton observables in the mantis_actionables app that
     # have a link to one of the facts via a source object
@@ -94,6 +198,7 @@ def update_and_transfer_tags(fact_pks,user=None):
         logger.debug("Treating singleton observable %s" % singleton)
         # Determine the facts associated with this singleton
         fact_ids = set(map(lambda x: x.iobject_fact_id, singleton.sources.all()))
+
         # Use the fact2tag_map to determine all mantis tags associated with the
         # singleton
 
@@ -107,7 +212,7 @@ def update_and_transfer_tags(fact_pks,user=None):
         else:
             existing_tags = set([])
 
-        logger.debug("Recorded dingos tags in mantis_actionables: %s" % existing_tags)
+        logger.debug("Hitherto recorded dingos tags in mantis_actionables: %s" % existing_tags)
 
         # calculate added and removed tags
 
@@ -122,7 +227,9 @@ def update_and_transfer_tags(fact_pks,user=None):
 
         if added_tags or removed_tags:
 
-            # Tags have been added or removed -- possibly, we have to update the status
+            # Tags have been added or removed: we store the current list
+            # of dingos tags with the singleton observable.
+
             updated_tag_info = list(found_tags)
             updated_tag_info.sort()
 
@@ -131,11 +238,13 @@ def update_and_transfer_tags(fact_pks,user=None):
             singleton.mantis_tags= updated_tag_info
             singleton.save()
 
-
-
             # We may have to update the status
 
             try:
+                # There should already be a status associated with the
+                # singleton observable -- we extract that and
+                # call the update function
+
                 new_status = None
                 status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
                                                 object_id=singleton.id,
@@ -146,10 +255,12 @@ def update_and_transfer_tags(fact_pks,user=None):
                                                   removed_tags = removed_tags,
                                                   added_tags = added_tags)
 
-                logger.debug("Status %s created" % (status))
+                logger.debug("Status %s found" % (status))
+                logger.debug("New status %s derived" % (new_status))
 
 
             except ObjectDoesNotExist:
+                # This should not happen, but let's guard against it anyhow
                 logger.critical("No status found for existing singleton observable. "
                                 "I create one, but this should not happen!!!")
                 status = createStatus(added_tags=added_tags,removed_tags=removed_tags)
@@ -159,6 +270,7 @@ def update_and_transfer_tags(fact_pks,user=None):
                 status2x.save()
                 created = False
             except MultipleObjectsReturned:
+                # This should not happen either, but let's guard against it
                 logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
                 status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
                                                      object_id=singleton.id,
@@ -186,73 +298,36 @@ def update_and_transfer_tags(fact_pks,user=None):
                 status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=singleton)
                 status2x_new.save()
 
-        # Check if any tag is matching a specific pattern
-        # TODO also treat removed tags
+        # Check if any of the added/removed dingos tag is matching the context pattern.
+        # If it is, transfer the change into the set of actionable tags associated with
+        # this singleton observable
+
         if added_tags or removed_tags:
-            fact_content_type = ContentType.objects.get_for_model(Fact)
-            just_now = timezone.now() - timedelta(milliseconds=500)
+
             for tag in added_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
-                    logger.debug("Found special tag %s" % tag)
-                    comment = ''
-                    likely_dingos_tag_history_entries = TaggingHistory.objects.filter(user=user,
-                                                                                      action = TaggingHistory.ADD,
-                                                                                      tag__name = tag,
-                                                                                      object_id__in = fact_ids,
-                                                                                      content_type = fact_content_type).order_by('-timestamp')
-                    if likely_dingos_tag_history_entries:
-                        likely_matching_entry = likely_dingos_tag_history_entries[0]
-                        if likely_matching_entry.timestamp >= just_now:
-                            comment = likely_matching_entry.comment
-                        else:
-                            comment = "%s (Comment derived automatically from DINGOS tag)" % likely_matching_entry.comment
+                    logger.debug("Found added special tag %s" % tag)
+                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.ADD,
+                                                                                        user,
+                                                                                        tag,
+                                                                                        fact_ids)
                     ActionableTag.bulk_action(action = 'add',
                                               context_name_pairs=[(tag,tag)],
                                               thing_to_tag_pks=[singleton.pk],
-                                              user=user,
+                                              user=result_user,
                                               comment=comment)
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found special tag %s" % tag)
-                    comment = ''
-                    likely_dingos_tag_history_entries = TaggingHistory.objects.filter(user=user,
-                                                                                      action = TaggingHistory.REMOVE,
-                                                                                      tag__name = tag,
-                                                                                      object_id__in = fact_ids,
-                                                                                      content_type = fact_content_type).order_by('-timestamp')
-                    print "Found entries %s" % likely_dingos_tag_history_entries
-
-                    if likely_dingos_tag_history_entries:
-                        likely_matching_entry = likely_dingos_tag_history_entries[0]
-                        if likely_matching_entry.timestamp >= just_now:
-                            comment = likely_matching_entry.comment
-                        else:
-                            comment = "%s (Comment derived automatically from DINGOS tag)" % likely_matching_entry.comment
-
+                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.REMOVE,
+                                                                                        user,
+                                                                                        tag,
+                                                                                        fact_ids)
                     ActionableTag.bulk_action(action = 'remove',
                                               context_name_pairs=[(tag,tag)],
                                               thing_to_tag_pks=[singleton.pk],
-                                              user=user,
+                                              user=result_user,
                                               comment=comment)
-
-                    #curr_context,created = Context.objects.get_or_create(name=tag)
-                    #curr_tagname,created = TagName.objects.get_or_create(name=tag)
-                    #curr_actionabletag,created = ActionableTag.objects.get_or_create(context=curr_context,
-                    #                                                         tag=curr_tagname)
-                    #curr_actionabletag2X,created = ActionableTag2X.objects.get_or_create(actionable_tag=curr_actionabletag,
-                    #                                                             object_id=singleton.id,
-                    #                                                             content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
-                    #history,created = ActionableTaggingHistory.objects.get_or_create(tag=curr_actionabletag,
-                    #                                                                 action=ActionableTaggingHistory.ADD,
-                    #                                                                 object_id=singleton.id,
-                    #                                                                 content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                    #                                                                 user=None)
-
-                # We take the union as new tag info
-
-
-
-
 
 
 def process_STIX_Reports(imported_since, imported_until=None):

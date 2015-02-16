@@ -273,18 +273,6 @@ class Status2X(models.Model):
     def __unicode__(self):
         return "Status2X: id %s, active %s, status_id %s, marked_id %s" % (self.id,self.active,self.status_id,self.marked.id)
 
-def createStatus(**kwargs):
-
-    new_status, created = Status.objects.get_or_create(false_positive=False,
-                                                      active=True,
-                                                      priority=Status.PRIORITY_UNCERTAIN)
-    return new_status
-
-def updateStatus(status,**kwargs):
-    new_status, created = Status.objects.get_or_create(false_positive=status.false_positive,
-                                                       active=status.active,
-                                                       priority=status.priority)
-    return (new_status,created)
 
 
 class SingletonObservableType(models.Model):
