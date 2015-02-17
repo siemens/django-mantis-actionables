@@ -498,7 +498,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
                                                                iobject_fact_id=fact_pk,
                                                                iobject_factvalue_id=fact_value_pk,
                                                                top_level_iobject_id=top_level_iobj_pk,
-                                                               origin=Source.ORIGIN_UNCERTAIN,
+                                                               origin=Source.ORIGIN_UNKNOWN,
+                                                               processing=Source.PROCESSING_UNKNOWN,
                                                                object_id=observable.id,
                                                                content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
                                                             )

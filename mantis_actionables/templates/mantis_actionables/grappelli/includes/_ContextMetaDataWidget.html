@@ -1,0 +1,91 @@
+{% comment %}
+Copyright (c) Siemens AG, 2015
+
+This file is part of MANTIS.  MANTIS is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation; either version 2
+of the License, or(at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 51
+Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+{% endcomment %}
+
+{% load dingos_tags %}
+{% block context_description %}
+
+
+<div class ="grp-module grp-collapse grp-{{ top_level_fold  }}">
+      <h2 class="grp-collapse-handler">Metadata
+
+      </h2>
+
+                <table>
+                    <thead>
+                    </thead>
+                <tbody>
+                  <tr class="grp-row grp-row-odd">
+
+                  <td>
+                      Title
+                  </td>
+                  <td>
+                      {{ context_obj.title }}
+                  </td>
+                  </tr>
+                  <tr class="grp-row grp-row-odd">
+                  <td>
+                      Description
+                  </td>
+                  <td>
+                      {{ context_obj.description }}
+                  </td>
+                  </tr>
+                  <tr class="grp-row grp-row-odd">
+
+                  <td>
+                      Creation Date
+                  </td>
+                  <td>
+                      {{ context_obj.timestamp }}
+                  </td>
+                  </tr>
+                  </tr>
+                  <tr class="grp-row grp-row-odd">
+
+                  <td>
+                      Actions
+                  </td>
+                  <td>
+                             {% url 'actionables_context_edit_view' context_name=context_obj.name as the_edit_url %}
+                                {% if the_edit_url and edit_button %}
+                                   <a class="grp-button" href="{{ the_edit_url }} ">Edit Metadata</a>
+                                {% endif %}
+
+                             {% url 'actionables_context_history_view' context_name=context_obj.name as the_history_url %}
+                                {% if the_history_url and show_history_button %}
+                                   <a class="grp-button" href="{{ the_history_url }} ">View Tagging History</a>
+                                {% endif %}
+
+                             {% url 'actionables_context_view' context_name=context_obj.name as the_details_url %}
+                                {% if the_details_url and show_details_button %}
+                                   <a class="grp-button" href="{{ the_details_url }} ">View Details</a>
+                                {% endif %}
+
+
+                  </td>
+                  </tr>
+
+                </tbody>
+                </table>
+
+
+    </div>
+
+
+{% endblock %}

@@ -9,6 +9,10 @@
 
 
   <div class="c-2">
+
+      {% show_ContextMetaData context_obj=view.curr_context_object widget_config=ContextMetaDataWidgetConfig %}
+
+
     <div class="grp-module grp-collapse grp-open">
       <h2 class="grp-collapse-handler">Singleton Observables tagged with "{{ view.curr_context_name }}"</h2>
 

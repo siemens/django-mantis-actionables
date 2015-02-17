@@ -30,13 +30,14 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 
 from dingos import DINGOS_TEMPLATE_FAMILY
-from dingos.view_classes import BasicJSONView, BasicTemplateView
+from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView
 from dingos.models import IdentifierNameSpace
 from dingos.core.utilities import listify
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
+from .filter import ActionablesContextFilter
 from .mantis_import import singleton_observable_types
 
 #content_type_id
@@ -489,11 +490,21 @@ class ActionablesContextView(BasicTemplateView):
 
         context['isEditable'] = True
         context['obs_tag_map'] = obs_tag_map
+
+        # TODO: Displaying buttons in this widget is a hack: we need
+        # a proper menu system with a context-specific menu display
+
+        context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_history']}
         return context
 
     def get(self,request, *args, **kwargs):
         self.order_by = self.order_by_dict.get(request.GET.get('o'))
         self.curr_context_name = kwargs.get('context_name')
+        try:
+            self.curr_context_object = Context.cached_objects.get(name=self.curr_context_name)
+        except ObjectDoesNotExist:
+            self.curr_context_object = None
+
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
 
 class ActionablesTagHistoryView(BasicTemplateView):
@@ -533,11 +544,48 @@ class ActionablesTagHistoryView(BasicTemplateView):
         context['history'] = history_q
         context['map_objs'] = obj_info_mapping
         context['map_action'] = ActionableTaggingHistory.ACTIONS
+
+        # TODO: Displaying buttons in this widget is a hack: we need
+        # a proper menu system with a context-specific menu display
+        context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_details']}
         return context
 
     def get(self, request, *args, **kwargs):
         self.mode = request.GET.get('mode')
 
-        self.tag_context = kwargs.pop('tag_context',None)
+        self.tag_context = kwargs.pop('context_name',None)
         self.title = "Timeline for '%s'" % self.tag_context
+        try:
+            self.curr_context_object = Context.cached_objects.get(name=self.tag_context)
+        except ObjectDoesNotExist:
+            self.curr_context_object = None
+
         return super(ActionablesTagHistoryView,self).get(request, *args, **kwargs)
+
+class ActionablesContextList(BasicFilterView):
+    template_name = 'mantis_actionables/%s/ContextList.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = "Context Overview"
+
+    filterset_class= ActionablesContextFilter
+
+    allow_save_search = False
+
+    counting_paginator = True
+
+class ActionablesContextEditView(BasicUpdateView):
+    template_name = 'mantis_actionables/%s/ContextEdit.html' % DINGOS_TEMPLATE_FAMILY
+    model = Context
+    fields = ['title','description']
+
+    def get_context_data(self, **kwargs):
+
+        context = super(ActionablesContextEditView, self).get_context_data(**kwargs)
+        context['title'] = "Edit context: %s" % self.object.name
+        return context
+
+    def get_object(self):
+        return Context.objects.get(name=self.kwargs['context_name'])
+
+
+

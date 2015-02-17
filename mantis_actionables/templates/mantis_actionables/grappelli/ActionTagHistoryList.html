@@ -1,9 +1,11 @@
 {% extends "dingos/grappelli/lists/base_lists_one_column.html" %}
 
 {% load dingos_tags %}
-
+{% load actionables_tags %}
 {% block content %}
   <div class="c-2">
+
+        {% show_ContextMetaData context_obj=view.curr_context_object widget_config=ContextMetaDataWidgetConfig %}
     <div class="grp-module">
       <h2 class="grp-collapse-handler">{% block list_title %}Timeline for "{{ tag_context }}"{% endblock %}</h2>
         <table>

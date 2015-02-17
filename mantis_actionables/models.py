@@ -139,33 +139,41 @@ class Source(models.Model):
 
     # Classification of origin
 
-    ORIGIN_UNCERTAIN = 0
-    ORIGIN_PUBLIC = 1
-    ORIGIN_VENDOR = 2
-    ORIGIN_PARTNER = 3
-    ORIGIN_INTERNAL_UNCHECKED = 4
-    ORIGIN_INTERNAL_CHECKED = 5
+    ORIGIN_UNKNOWN = 0
+    ORIGIN_EXTERNAL = 10
+    ORIGIN_PUBLIC = 10
+    ORIGIN_VENDOR = 20
+    ORIGIN_PARTNER = 30
+    ORIGIN_INTERNAL = 40
 
-    ORIGIN_KIND = ((ORIGIN_UNCERTAIN, "Uncertain"),
-                     (ORIGIN_PUBLIC, "Public"),
-                     (ORIGIN_VENDOR, "Provided by vendor"),
-                     (ORIGIN_PARTNER, "Provided by partner"),
-                     (ORIGIN_INTERNAL_UNCHECKED, "Internal (automated input)"),
-                     (ORIGIN_INTERNAL_CHECKED, "Internal (manually selected)"),
+    ORIGIN_KIND = ((ORIGIN_UNKNOWN, "Origin not external"),
+                   (ORIGIN_EXTERNAL, "Origin external, but provenance uncertain"),
+                   (ORIGIN_PUBLIC, "Origin public"),
+                   (ORIGIN_VENDOR, "Provided by vendor"),
+                   (ORIGIN_PARTNER, "Provided by partner"),
     )
 
+    origin = models.SmallIntegerField(choices=ORIGIN_KIND)
 
+    # Classification of processing
 
-    origin = models.SmallIntegerField(choices=ORIGIN_KIND,
-                                      help_text = "Chose 'internal (automated input)' for information "
-                                                  "stemming from automated mechanism such as sandbox reports etc.")
+    PROCESSING_UNKNOWN = 0
+    PROCESSED_AUTOMATICALLY = 10
+    PROCESSED_MANUALLY = 20
+
+    PROCESSING_KIND = ((PROCESSING_UNKNOWN, "Processing uncertain"),
+                      (PROCESSED_AUTOMATICALLY, "Automatically processed"),
+                      (PROCESSED_MANUALLY, "Manually processed"),
+    )
+
+    processing = models.SmallIntegerField(choices=PROCESSING_KIND,default=PROCESSING_UNKNOWN)
 
 
     TLP_UNKOWN = 0
-    TLP_WHITE = 10
-    TLP_GREEN = 20
-    TLP_AMBER = 30
-    TLP_RED = 40
+    TLP_WHITE = 40
+    TLP_GREEN = 30
+    TLP_AMBER = 20
+    TLP_RED = 10
 
     TLP_KIND = ((TLP_UNKOWN,"Unknown"),
                 (TLP_WHITE,"White"),
@@ -342,9 +350,16 @@ class ImportInfo(models.Model):
 
 class Context(models.Model):
     name = models.CharField(max_length=40,unique=True)
+    title = models.CharField(max_length=256,blank=True,default='')
+    description = models.TextField(blank=True,default='')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
     objects = models.Manager()
     cached_objects = CachingManager()
 
+    def get_absolute_url(self):
+        from django.core.urlresolvers import reverse
+        return reverse('actionables_context_view', args=[self.name])
 
 
 class TagName(models.Model):
@@ -405,6 +420,8 @@ class ActionableTag(models.Model):
 
             actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
                                                                                  tag_id=tag_name.pk)
+
+
             actionable_tag_list.append(actionable_tag)
 
         if action == 'add':
