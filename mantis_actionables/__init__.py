@@ -2,6 +2,8 @@ __version__ = '0.0.1'
 
 import re
 
+from dingos import DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
+
 STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
                                  'iobject_type_family': 'stix.mitre.org'}]
 
@@ -41,9 +43,7 @@ DASHBOARD_CONTENTS = {
 
 }
 
-MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX = [
-    re.compile(r"^INVES-[0-9]+(-[A-Za-z0-9]+)?$")
-]
+MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX = DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
 
 MANTIS_ACTIONABLES_STATUS_CREATION_FUNCTION_PATH = ""
 

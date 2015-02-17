@@ -443,7 +443,10 @@ def processActionablesTagging(data,**kwargs):
 class ActionablesContextView(BasicTemplateView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
 
-    title = 'Context View'
+
+    @property
+    def title(self):
+        return self.curr_context_name
 
     order_by_dict = {'type':'actionable_tag_thru__singleton_observables__type__name',
                      'subtype':'actionable_tag_thru__singleton_observables__subtype__name',
