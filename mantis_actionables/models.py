@@ -29,6 +29,8 @@ from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, Identifier
 
+
+
 class CachingManager(models.Manager):
     """
     For models that have a moderate amount of entries and are always queried
@@ -406,7 +408,9 @@ class ActionableTag(models.Model):
 
 
         """
-
+        # TODO: Import must be here, otherwise we get an exception "models not ready
+        # at startup.
+        from .mantis_import import update_and_transfer_tag_action_to_dingos
         # The content type must be defined here: defining it outside the function
         # leads to a circular import
         CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -414,8 +418,13 @@ class ActionableTag(models.Model):
 
         # Create the list of actionable tags for this bulk action
         actionable_tag_list = []
+
+        context_name_set = set([])
         for (context_name,tag_name) in context_name_pairs:
             context,created = Context.cached_objects.get_or_create(name=context_name)
+
+            context_name_set.add(context_name)
+
             tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
 
             actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
@@ -461,6 +470,12 @@ class ActionableTag(models.Model):
                                                                  thing_to_tag_pks,
                                                                  user,
                                                                  comment)
+
+            update_and_transfer_tag_action_to_dingos(action,
+                                                     context_name_set,
+                                                     thing_to_tag_pks,
+                                                     user=user,
+                                                     comment=comment)
 
 class ActionableTag2X(models.Model):
 

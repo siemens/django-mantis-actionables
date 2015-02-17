@@ -137,6 +137,45 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
     return (result_user,comment)
 
 
+def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_singleton_pks,user=None,comment=''):
+
+    affected_singletons = SingletonObservable.objects.filter(id__in=affected_singleton_pks)
+
+    affected_fact_ids = set(SingletonObservable.objects.filter(id__in=affected_singleton_pks).values_list('sources__iobject_fact',flat=True))
+    #found_contexts = set(SingletonObservable.objects.all().values_list('actionable_tags__actionable_tag__context__name',flat=True))
+
+    affected_facts = Fact.objects.filter(pk__in=affected_fact_ids)
+
+    for affected_fact in affected_facts:
+        existing_tags = set(affected_fact.tags.all())
+        if action == 'add':
+            changed_tags = context_name_set.difference(existing_tags)
+            affected_fact.tags.add(*context_name_set)
+        elif action == 'remove':
+            changed_tags = existing_tags.difference(context_name_set)
+            affected_fact.tags.remove(*context_name_set)
+
+        TaggingHistory.bulk_create_tagging_history(action,changed_tags,[affected_fact],user,comment)
+
+    for singleton in affected_singletons:
+        if singleton.mantis_tags:
+            existing_tags = set(singleton.mantis_tags.split(','))
+        else:
+            existing_tags = set([])
+        if action == 'add':
+            existing_tags.update(context_name_set)
+        elif action == 'remove':
+            existing_tags.difference_update(context_name_set)
+
+        updated_tag_info = ",".join(existing_tags)
+
+        singleton.mantis_tags= updated_tag_info
+        singleton.save()
+
+
+
+
+
 def update_and_transfer_tags(fact_pks,user=None):
 
     """
