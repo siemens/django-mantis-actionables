@@ -17,6 +17,8 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import logging
+
 from django.db import models
 from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
@@ -29,7 +31,7 @@ from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, Identifier
 
-
+logger = logging.getLogger(__name__)
 
 class CachingManager(models.Manager):
     """
@@ -314,6 +316,8 @@ class SingletonObservable(models.Model):
 
     mantis_tags = models.TextField(blank=True,default='')
 
+    actionable_tags_cache = models.TextField(blank=True,default='')
+
     class Meta:
         unique_together = ('type', 'subtype', 'value')
 
@@ -476,6 +480,25 @@ class ActionableTag(models.Model):
                                                      thing_to_tag_pks,
                                                      user=user,
                                                      comment=comment)
+
+            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
+            for singleton in singletons:
+
+                actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
+                                                                  x.actionable_tag.tag.name),
+                                             singleton.actionable_tags.all()))
+                actionable_tag_list = list(actionable_tag_set)
+                actionable_tag_list.sort()
+
+                updated_tag_info = ",".join(actionable_tag_list)
+
+                singleton.actionable_tags_cache = updated_tag_info
+
+                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
+
+                singleton.save()
+
+
 
 class ActionableTag2X(models.Model):
 

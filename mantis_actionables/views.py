@@ -469,6 +469,7 @@ class ActionablesContextView(BasicTemplateView):
                 'actionable_tag_thru__singleton_observables__subtype__name',\
                 'actionable_tag_thru__singleton_observables__value',\
                 'actionable_tag_thru__singleton_observables__id']
+
         matching_observables = ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
                                         .values_list(*cols)
