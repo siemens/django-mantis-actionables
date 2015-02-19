@@ -244,7 +244,6 @@ class ActionablesBaseTableSource(BasicJSONView):
             self.postprocess(table_name,res,q)
         return res
 
-
 class ActionablesTableStandardSource(ActionablesBaseTableSource):
     @classmethod
     def init_data(cls):
@@ -355,7 +354,7 @@ def status_infos(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
-    print content_dict
+
     return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
                               content_dict, context_instance=RequestContext(request))
 
@@ -540,7 +539,7 @@ class ActionablesTagHistoryView(BasicTemplateView):
             model_q = model.objects.filter(id__in=self.pks).values(*cols)
             current_model_map = obj_info_mapping.setdefault(content_id,{})
             for obj in model_q:
-                print obj
+
                 current_model_map[obj['id']] = obj
             del self.pks
         context['mode'] = self.mode
