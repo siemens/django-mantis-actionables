@@ -381,7 +381,6 @@ def update_and_transfer_tags(fact_pks,user=None):
 
 
 
-
 def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
     """
     The function carries out the following actions:
@@ -402,51 +401,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
       be imported into mantis_actionables, a single exporter result must
       yield the following keys::
 
-        {
-
-         (...)
-
-         "actionable_type": <e.g., 'Hash'>
-         "actionable_subtype": <e.g., 'MD5', can be empty for other types>
-         "actionable_info": <basic information, e.g., hash value>
-
-         (...)
-
-         "object.pk": <pk of information object in which fact was found from
-                       which the actionable info has been derived>
-         "fact.pk": <pk of fact from which actionable info was derived>
-         "value.pk": <pk of value from which actionable info was derived>
-
-
-        },
-
-    - The function extracts the set of all 'object.pk's. It then queries MANTIS for all
-      facts in marking objects that are associated as markings with one of these objects
-      and contain the fact_term with term 'Marking_Structure' and attribute '@color'
-      and builds a dictionary mapping object-pks to TLP color (ignoring differences
-      in lower/upper case)
-
-    - For each export result, the function calls ``extract_singleton_observable`` to
-      extract singleton observable type and value. It then does the following:
-
-      - get or create the SingletonObservable object (please be smart about
-        handling the SingletonObservableType: instead of querying for the pk
-        again and again, use a global dictionary to store a mapping from
-        type-name to pk and only look up types in the database
-        that have not been encountered before
-
-      - create a Source object and fills in
-        - the links to the MANTIS-observables
-        - TLP information
-        - leave ORIGIN set to uncertain for now.
-
     """
-
-    if top_level_iobjs:
-        if isinstance(top_level_iobjs[0],InfoObject):
-            top_level_iobj_pks = map(lambda x:x.pk, top_level_iobjs)
-        else:
-            top_level_iobj_pks = top_level_iobjs
 
     # We leave the skip terms away since we are going in down direction,
     # so the danger that we pull in lot's of stuff we do not want
@@ -457,15 +412,16 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
     skip_terms = []
 
 
-    # Mapping from fact ids to tags
+    if top_level_iobjs:
+        if isinstance(top_level_iobjs[0],InfoObject):
+            top_level_iobj_pks = map(lambda x:x.pk, top_level_iobjs)
+        else:
+            top_level_iobj_pks = top_level_iobjs
 
-    fact2tag_map = {}
-
-    # Mapping information objects to TLP information
-
-    iobj2tlp_map = {}
 
     action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+
+    results_per_top_level_obj = []
 
     for top_level_iobj_pk in top_level_iobj_pks:
         graph= follow_references([top_level_iobj_pk],
@@ -495,70 +451,128 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
 
                 results += part_results
 
+
         if results:
+            results_per_top_level_obj.append((top_level_iobj_pk,results))
 
-            containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
+    for (top_level_iobj_pk, results) in results_per_top_level_obj:
+        import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action)
 
-            select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
-            color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
-                .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
-                        marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
-                .values_list(*select_columns)
+def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None):
+    """
+    The function takes the primary key of an InfoObject representing a top-level STIX object
+    and a list of results that have the following shape::
 
-            for iobject_tlp_info in color_qs:
-                iobj2tlp_map[iobject_tlp_info[0]] = iobject_tlp_info[1].lower()
+        {
 
-            for result in results:
+         (...)
 
-                iobj_pk = int(result['object.pk'])
-                fact_pk = int(result['fact.pk'])
-                fact_value_pk = int(result['value.pk'])
-                type = result.get('actionable_type','')
-                subtype = result.get('actionable_subtype','')
+         "actionable_type": <e.g., 'Hash'>
+         "actionable_subtype": <e.g., 'MD5', can be empty for other types>
+         "actionable_info": <basic information, e.g., hash value>
 
-                if not subtype:
-                    # If by mistake, subtype has been set to None,
-                    # make sure that it is set to ''
-                    subtype = ''
+         (...)
 
-                value = result.get('actionable_info','')
+         "object.pk": <pk of information object in which fact was found from
+                       which the actionable info has been derived>
+         "fact.pk": <pk of fact from which actionable info was derived>
+         "value.pk": <pk of value from which actionable info was derived>
 
-                if not (type and value):
-                    continue
+        },
 
-                singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
-                singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
+    - The function extracts the set of all 'object.pk's. It then queries MANTIS for all
+      facts in marking objects that are associated as markings with one of these objects
+      and contain the fact_term with term 'Marking_Structure' and attribute '@color'
+      and builds a dictionary mapping object-pks to TLP color (ignoring differences
+      in lower/upper case)
 
-                observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
-                                                                                subtype=singleton_subtype_obj,
-                                                                                value=value)
+    - It then does the following:
 
-                source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
-                                                               iobject_fact_id=fact_pk,
-                                                               iobject_factvalue_id=fact_value_pk,
-                                                               top_level_iobject_id=top_level_iobj_pk,
-                                                               origin=Source.ORIGIN_UNKNOWN,
-                                                               processing=Source.PROCESSING_UNKNOWN,
-                                                               object_id=observable.id,
-                                                               content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
-                                                            )
+      - get or create the SingletonObservable object
 
-                tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
-                if not source.tlp == tlp_color:
-                    source.tlp = tlp_color
-                    source.save()
+      - create a Source object and fills in
+        - the links to the MANTIS-observables
+        - TLP information
+        - leave ORIGIN set to uncertain for now.
 
-                if created:
-                    logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-                    new_status = createStatus(added_tags=[]) # TODO: pass source info
-                    status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-                    status2x.save()
+      - transfer tags from dingos into actionables
+      - create or update the status of the singleton observable
 
-                else:
-                    logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+    """
 
-            fact_pks = set(map(lambda x: x.get('fact.pk'), results))
-            update_and_transfer_tags(fact_pks)
+    # Mapping from fact ids to tags
+
+    fact2tag_map = {}
+
+    # Mapping information objects to TLP information
+
+    iobj2tlp_map = {}
+
+    if not action:
+        action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+
+    containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
+
+    select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
+    color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
+        .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
+                marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
+        .values_list(*select_columns)
+
+    for iobject_tlp_info in color_qs:
+        iobj2tlp_map[iobject_tlp_info[0]] = iobject_tlp_info[1].lower()
+
+    for result in results:
+
+        iobj_pk = int(result['object.pk'])
+        fact_pk = int(result['fact.pk'])
+        fact_value_pk = int(result['value.pk'])
+        type = result.get('actionable_type','')
+        subtype = result.get('actionable_subtype','')
+
+        if not subtype:
+            # If by mistake, subtype has been set to None,
+            # make sure that it is set to ''
+            subtype = ''
+
+        value = result.get('actionable_info','')
+
+        if not (type and value):
+            continue
+
+        singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
+        singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
+
+        observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
+                                                                        subtype=singleton_subtype_obj,
+                                                                        value=value)
+
+        source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
+                                                       iobject_fact_id=fact_pk,
+                                                       iobject_factvalue_id=fact_value_pk,
+                                                       top_level_iobject_id=top_level_iobj_pk,
+                                                       origin=Source.ORIGIN_UNKNOWN,
+                                                       processing=Source.PROCESSING_UNKNOWN,
+                                                       object_id=observable.id,
+                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
+                                                    )
+
+        tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
+        if not source.tlp == tlp_color:
+            source.tlp = tlp_color
+            source.save()
+
+        if created:
+            logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
+            new_status = createStatus(added_tags=[]) # TODO: pass source info
+            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
+            status2x.save()
+
+        else:
+            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+
+    fact_pks = set(map(lambda x: x.get('fact.pk'), results))
+    update_and_transfer_tags(fact_pks)
 
 
 def process_STIX_Reports(imported_since, imported_until=None):
