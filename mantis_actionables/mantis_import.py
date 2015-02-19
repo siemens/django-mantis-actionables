@@ -46,6 +46,8 @@ from .models import SingletonObservable,\
 
 from .status_management import createStatus, updateStatus
 
+from tasks import async_export_to_actionables
+
 logger = logging.getLogger(__name__)
 
 #content_type_id
@@ -365,7 +367,8 @@ def update_and_transfer_tags(fact_pks,user=None):
                                               context_name_pairs=[(tag,tag)],
                                               thing_to_tag_pks=[singleton.pk],
                                               user=result_user,
-                                              comment=comment)
+                                              comment=comment,
+                                              supress_transfer_to_dingos=True)
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found special tag %s" % tag)
@@ -377,7 +380,8 @@ def update_and_transfer_tags(fact_pks,user=None):
                                               context_name_pairs=[(tag,tag)],
                                               thing_to_tag_pks=[singleton.pk],
                                               user=result_user,
-                                              comment=comment)
+                                              comment=comment,
+                                              supress_transfer_to_dingos=True)
 
 
 
@@ -456,6 +460,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
             results_per_top_level_obj.append((top_level_iobj_pk,results))
 
     for (top_level_iobj_pk, results) in results_per_top_level_obj:
+        #async_export_to_actionables(top_level_iobj_pk,results,action=action)
         import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action)
 
 def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None):

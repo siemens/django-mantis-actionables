@@ -327,7 +327,6 @@ class SingletonObservable(models.Model):
 class SignatureType(models.Model):
     name = models.CharField(max_length=255)
 
-
 class IDSSignature(models.Model):
     type = models.ForeignKey(SignatureType)
     value = models.TextField()
@@ -397,7 +396,8 @@ class ActionableTag(models.Model):
                     thing_to_tag_pks,
 
                     user=None,
-                    comment=''):
+                    comment='',
+                    supress_transfer_to_dingos=False):
         """
         Input:
         - action: either 'add' or 'remove'
@@ -475,11 +475,12 @@ class ActionableTag(models.Model):
                                                                  user,
                                                                  comment)
 
-            update_and_transfer_tag_action_to_dingos(action,
-                                                     context_name_set,
-                                                     thing_to_tag_pks,
-                                                     user=user,
-                                                     comment=comment)
+            if not supress_transfer_to_dingos:
+                update_and_transfer_tag_action_to_dingos(action,
+                                                         context_name_set,
+                                                         thing_to_tag_pks,
+                                                         user=user,
+                                                         comment=comment)
 
             singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
             for singleton in singletons:
