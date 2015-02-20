@@ -1,0 +1,69 @@
+{% extends "mantis_actionables/grappelli/base.html" %}
+{% load actionables_tags %}
+{% load dingos_tags %}
+
+{% load tagging_widgets %}
+
+{% block content %}
+
+
+
+  <div class="c-2">
+
+      {% show_ContextMetaData context_obj=view.curr_context_object widget_config=ContextMetaDataWidgetConfig %}
+
+
+    <div class="grp-module grp-collapse grp-open">
+      <h2 class="grp-collapse-handler">Singleton Observables tagged with "{{ view.curr_context_name }}"</h2>
+
+      <div class="grp-module grp-changelist-results">
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+        <thead>
+         <tr>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "type" "Type" %}
+
+           </th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "subtype" "Subtype" %}
+
+           </th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "value" "Value" %}
+
+           </th>
+           <th class="middle">Tags</th>
+         </tr>
+         </thead>
+        <tbody>
+         {% for obs_info,tags in obs_tag_map.items %}
+         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+           <td class="w-1 nowrap middle">{{ obs_info.0 }}</td>
+           <td class="w-1 nowrap middle">{{ obs_info.1 }}</td>
+           <td class="w-1 nowrap middle">{{ obs_info.2 }}</td>
+           <td class="middle">
+            <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
+            {% if tags %}
+              {% show_TagDisplay tags 'actionables' isEditable tag_context=view.curr_context_name%}
+            {% endif %}
+            </div>
+          {% if isEditable %}
+              {% show_addTagInput_actionables obs_info.3 view.curr_context_name %}
+          {% endif %}
+          </td>
+         </tr>
+         {% endfor %}
+        </tbody>
+       </table>
+    </div>
+
+
+  </div>
+
+        {% show_TaggedThings tag=view.curr_context_name  %}
+  </div>
+{% include 'autocomplete_light/static.html' %}
+{% include "dingos/grappelli/includes/_TaggingDialogs.html" %}
+{% endblock %}

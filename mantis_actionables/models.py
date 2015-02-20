@@ -17,16 +17,95 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import logging
+
 from django.db import models
 from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes import generic
+from django.core.cache import caches
 
 from datetime import datetime
 
 from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, Identifier
+
+logger = logging.getLogger(__name__)
+
+class CachingManager(models.Manager):
+    """
+    For models that have a moderate amount of entries and are always queried
+    with ``get_or_create`` using the same argument(s) (usually, list-of-value definitions such as
+    types, namespaces, etc,) use this CachingManager to enable easy querying
+    while avoiding to hit the database every time.
+
+    To use for a model:
+
+    - include model name and query for which a cache is to be maintained in
+      the mapping 'cachable_queries' as follows::
+          cachable_queries = {
+                              # Make sure that the query arguments below are given in alphabetical order!!!
+                              ...
+                              "ActionableTag" : ["context_id","tag_id"]
+                              ...
+                            }
+
+      So queries of form ``get_or_create(context_id=bla,tag_id=bla)
+      can now be answered from the cache
+    - include the cached manager in the model definition as follows::
+
+         objects = models.Manager()
+         cached_objects = CachingManager()
+
+      and use ``ActionableTag.cached_objects.get_or_create(...)`` for the query.
+
+    """
+
+    TIME_TO_LIVE = None
+
+    cache = caches['caching_manager']
+
+    cachable_queries = {
+        # Make sure that the query arguments below are given in alphabetical order!!!
+        "SingletonObservableType" : ['name'],
+        "SingletonObservableSubtype" : ['name'],
+        "Context" : ["name"],
+        "TagName" : ["name"],
+        "ActionableTag" : ["context_id","tag_id"]
+    }
+
+    def get_or_create(self, defaults=None, **kwargs):
+        sorted_keys = sorted(kwargs.keys())
+        sorted_arguments = tuple(sorted(kwargs.values()))
+        if sorted_keys == sorted(CachingManager.cachable_queries[self.model.__name__]):
+            if not CachingManager.cache.get(self.model.__name__):
+                all_objects = list(super(CachingManager, self).all())
+                value_dic = {}
+                for object in all_objects:
+                    # TODO: When the cache is filled for the first time, the line below
+                    # leads to a query for each single object. I thought that the
+                    # wrapping 'list(...)' above when getting all objects would take care of
+                    # this, but it does not... Can this be changed? otherwise, initializing
+                    # the cache is really expensive...
+                    sorted_values = tuple(sorted([getattr(object, attr) for attr in sorted_keys]))
+                    value_dic[sorted_values] = object
+                CachingManager.cache.set(self.model.__name__, value_dic, CachingManager.TIME_TO_LIVE)
+
+
+            inCache = CachingManager.cache.get(self.model.__name__).get(sorted_arguments)
+
+            if inCache:
+                return inCache, False
+
+            else:
+                (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
+                CachingManager.cache.get(self.model.__name__)[sorted_arguments] = object
+                return object, created
+        else:
+            (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
+
+
 
 class Action(models.Model):
 
@@ -38,9 +117,8 @@ class Action(models.Model):
     comment = models.TextField(blank=True)
 
 
-
 class Source(models.Model):
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
     # If the source is MANTIS, we populate the following fields:
 
@@ -65,33 +143,41 @@ class Source(models.Model):
 
     # Classification of origin
 
-    ORIGIN_UNCERTAIN = 0
-    ORIGIN_PUBLIC = 1
-    ORIGIN_VENDOR = 2
-    ORIGIN_PARTNER = 3
-    ORIGIN_INTERNAL_UNCHECKED = 4
-    ORIGIN_INTERNAL_CHECKED = 5
+    ORIGIN_UNKNOWN = 0
+    ORIGIN_EXTERNAL = 10
+    ORIGIN_PUBLIC = 10
+    ORIGIN_VENDOR = 20
+    ORIGIN_PARTNER = 30
+    ORIGIN_INTERNAL = 40
 
-    ORIGIN_KIND = ((ORIGIN_UNCERTAIN, "Uncertain"),
-                     (ORIGIN_PUBLIC, "Public"),
-                     (ORIGIN_VENDOR, "Provided by vendor"),
-                     (ORIGIN_PARTNER, "Provided by partner"),
-                     (ORIGIN_INTERNAL_UNCHECKED, "Internal (automated input)"),
-                     (ORIGIN_INTERNAL_CHECKED, "Internal (manually selected)"),
+    ORIGIN_KIND = ((ORIGIN_UNKNOWN, "Origin not external"),
+                   (ORIGIN_EXTERNAL, "Origin external, but provenance uncertain"),
+                   (ORIGIN_PUBLIC, "Origin public"),
+                   (ORIGIN_VENDOR, "Provided by vendor"),
+                   (ORIGIN_PARTNER, "Provided by partner"),
     )
 
+    origin = models.SmallIntegerField(choices=ORIGIN_KIND)
 
+    # Classification of processing
 
-    origin = models.SmallIntegerField(choices=ORIGIN_KIND,
-                                      help_text = "Chose 'internal (automated input)' for information "
-                                                  "stemming from automated mechanism such as sandbox reports etc.")
+    PROCESSING_UNKNOWN = 0
+    PROCESSED_AUTOMATICALLY = 10
+    PROCESSED_MANUALLY = 20
+
+    PROCESSING_KIND = ((PROCESSING_UNKNOWN, "Processing uncertain"),
+                      (PROCESSED_AUTOMATICALLY, "Automatically processed"),
+                      (PROCESSED_MANUALLY, "Manually processed"),
+    )
+
+    processing = models.SmallIntegerField(choices=PROCESSING_KIND,default=PROCESSING_UNKNOWN)
 
 
     TLP_UNKOWN = 0
-    TLP_WHITE = 10
-    TLP_GREEN = 20
-    TLP_AMBER = 30
-    TLP_RED = 40
+    TLP_WHITE = 40
+    TLP_GREEN = 30
+    TLP_AMBER = 20
+    TLP_RED = 10
 
     TLP_KIND = ((TLP_UNKOWN,"Unknown"),
                 (TLP_WHITE,"White"),
@@ -100,7 +186,16 @@ class Source(models.Model):
                 (TLP_RED,"Red"),
     )
 
-    tlp = models.SmallIntegerField(choices=TLP_KIND)
+    TLP_COLOR_CSS = {
+        TLP_UNKOWN : "gray",
+        TLP_WHITE : "white",
+        TLP_GREEN : "green",
+        TLP_AMBER : "amber",
+        TLP_RED : "red"
+    }
+
+    tlp = models.SmallIntegerField(choices=TLP_KIND,
+                                   default=TLP_UNKOWN)
 
     url = models.URLField(blank=True)
 
@@ -113,10 +208,12 @@ class Source(models.Model):
     object_id = models.PositiveIntegerField()
     yielded = generic.GenericForeignKey('content_type', 'object_id')
 
+    class Meta:
+        unique_together = ('iobject','iobject_fact','iobject_factvalue','top_level_iobject','content_type','object_id')
+
 
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
 NULL_TIME = datetime.min.replace(tzinfo=timezone.utc)
-
 
 def get_inf_time():
 
@@ -125,7 +222,6 @@ def get_inf_time():
 def get_null_time():
 
     return NULL_TIME
-
 
 class Status(models.Model):
 
@@ -140,6 +236,10 @@ class Status(models.Model):
 
     active_from = models.DateTimeField(default = get_null_time)
     active_to = models.DateTimeField(default = get_inf_time)
+
+    #Field to store tags, seperated by ',', when Django 1.8 released replaced by ArrayField
+    #https://docs.djangoproject.com/en/dev/ref/contrib/postgres/fields
+    tags = models.TextField(blank=True,default='')
 
     PRIORITY_UNCERTAIN = 0
     PRIORITY_LOW = 10
@@ -161,8 +261,6 @@ class Status(models.Model):
                                                   "in the source information.")
 
 
-
-
 class Status2X(models.Model):
 
     action = models.ForeignKey(Action,
@@ -173,7 +271,7 @@ class Status2X(models.Model):
 
     active = models.BooleanField(default=True)
 
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
 
     # Status can be linked to different models:
@@ -184,22 +282,47 @@ class Status2X(models.Model):
     object_id = models.PositiveIntegerField()
     marked = generic.GenericForeignKey('content_type', 'object_id')
 
+    def __unicode__(self):
+        return "Status2X: id %s, active %s, status_id %s, marked_id %s" % (self.id,self.active,self.status_id,self.marked.id)
+
+
 
 class SingletonObservableType(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255,unique=True)
     description = models.TextField(blank=True)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
+class SingletonObservableSubtype(models.Model):
+    name = models.CharField(max_length=255,blank=True,unique=True)
+    description = models.TextField(blank=True)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
 
 class SingletonObservable(models.Model):
     type = models.ForeignKey(SingletonObservableType)
+    subtype = models.ForeignKey(SingletonObservableSubtype)
     value = models.CharField(max_length=2048)
 
-    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
+    status_thru = generic.GenericRelation(Status2X,related_query_name='singleton_observables')
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
-    class Meta:
-        unique_together = ('type', 'value')
+    actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
 
+    mantis_tags = models.TextField(blank=True,default='')
+
+    actionable_tags_cache = models.TextField(blank=True,default='')
+
+    class Meta:
+        unique_together = ('type', 'subtype', 'value')
+
+    def __unicode__(self):
+        return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
 
 class SignatureType(models.Model):
     name = models.CharField(max_length=255)
@@ -228,5 +351,219 @@ class ImportInfo(models.Model):
     #                                                 " of a STIX Incident object")
 
     comment = models.TextField(blank=True)
+
+
+class Context(models.Model):
+    name = models.CharField(max_length=40,unique=True)
+    title = models.CharField(max_length=256,blank=True,default='')
+    description = models.TextField(blank=True,default='')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    def get_absolute_url(self):
+        from django.core.urlresolvers import reverse
+        return reverse('actionables_context_view', args=[self.name])
+
+
+class TagName(models.Model):
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
+
+    def __unicode__(self):
+        return "%s" % (self.name)
+
+
+class ActionableTag(models.Model):
+    context = models.ForeignKey(Context,
+                                null=True)
+    tag = models.ForeignKey(TagName)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    @classmethod
+    def bulk_action(cls,
+                    action,
+                    context_name_pairs,
+
+                    # TODO: once we want to generalize, allowing tagging of other
+                    # things, we need to also the model for each pk
+                    thing_to_tag_pks,
+
+                    user=None,
+                    comment='',
+                    supress_transfer_to_dingos=False):
+        """
+        Input:
+        - action: either 'add' or 'remove'
+        - context_name_pairs: list of pairs '('context','tag_name')' denoting
+          the actionable tags to added or removed
+        - things_to_tag_pks: pks of SingletonObjects to be tagged
+        - user: user object of user doing the tagging
+        - comment: comment string
+
+        The function carries out the action (addition or removing) of the
+        provided actionable tags and also fills in the actionable-tag history.
+
+
+        """
+        # TODO: Import must be here, otherwise we get an exception "models not ready
+        # at startup.
+        from .mantis_import import update_and_transfer_tag_action_to_dingos
+        # The content type must be defined here: defining it outside the function
+        # leads to a circular import
+        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+
+
+        # Create the list of actionable tags for this bulk action
+        actionable_tag_list = []
+
+        context_name_set = set([])
+        for (context_name,tag_name) in context_name_pairs:
+            context,created = Context.cached_objects.get_or_create(name=context_name)
+
+            context_name_set.add(context_name)
+
+            tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
+
+            actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
+                                                                                 tag_id=tag_name.pk)
+
+
+            actionable_tag_list.append(actionable_tag)
+
+        if action == 'add':
+            action_flag = ActionableTaggingHistory.ADD
+        elif action == 'remove':
+            action_flag = ActionableTaggingHistory.REMOVE
+        for pk in thing_to_tag_pks:
+            for actionable_tag in actionable_tag_list:
+                affected_tags = set([])
+                if action_flag == ActionableTaggingHistory.ADD:
+                    actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
+                                                                                      object_id=pk,
+                                                                                      content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                    if created:
+                        affected_tags.add(actionable_tag)
+
+                elif action_flag == ActionableTaggingHistory.REMOVE:
+                    actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
+                                                                        object_id=pk,
+                                                                        content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+
+                    if actionable_tag_2xs:
+                        actionable_tag_2xs.delete()
+                        affected_tags.add(actionable_tag)
+                    if actionable_tag.tag.name == actionable_tag.context.name:
+                        # This tag marks an context and the whole context is deleted:
+                        # We therefore need to remove all tags in the context
+                        actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag__context=actionable_tag.context,
+                                                                            object_id=pk,
+                                                                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                        for actionable_tag_2x in actionable_tag_2xs:
+                            affected_tags.add(actionable_tag_2x.actionable_tag)
+                        actionable_tag_2xs.delete()
+
+            ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
+                                                                 affected_tags,
+                                                                 thing_to_tag_pks,
+                                                                 user,
+                                                                 comment)
+
+            if not supress_transfer_to_dingos:
+                update_and_transfer_tag_action_to_dingos(action,
+                                                         context_name_set,
+                                                         thing_to_tag_pks,
+                                                         user=user,
+                                                         comment=comment)
+
+            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
+            for singleton in singletons:
+
+                actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
+                                                                  x.actionable_tag.tag.name),
+                                             singleton.actionable_tags.all()))
+                actionable_tag_list = list(actionable_tag_set)
+                actionable_tag_list.sort()
+
+                updated_tag_info = ",".join(actionable_tag_list)
+
+                singleton.actionable_tags_cache = updated_tag_info
+
+                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
+
+                singleton.save()
+
+
+
+class ActionableTag2X(models.Model):
+
+    actionable_tag = models.ForeignKey(ActionableTag,
+                                related_name='actionable_tag_thru')
+
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    tagged = generic.GenericForeignKey('content_type', 'object_id')
+
+    class Meta:
+        unique_together = ('actionable_tag',
+                           'content_type',
+                           'object_id',
+                           )
+
+
+
+class ActionableTaggingHistory(models.Model):
+    ADD = 0
+    REMOVE = 1
+    ACTIONS = [
+        (ADD,'Added'),
+        (REMOVE,'Removed')
+    ]
+
+
+    tag = models.ForeignKey(ActionableTag,related_name='actionable_tag_history')
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+    action = models.SmallIntegerField(choices=ACTIONS)
+    user = models.ForeignKey(User,related_name='actionable_tagging_history',null=True)
+    comment = models.TextField(blank=True)
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    tobject = generic.GenericForeignKey('content_type', 'object_id')
+
+
+    # Status can be linked to different models:
+    # - singleton Observables
+    # - IDS Signatures
+
+    content_type = models.ForeignKey(ContentType)
+    object_id = models.PositiveIntegerField()
+    marked = generic.GenericForeignKey('content_type', 'object_id')
+
+    @classmethod
+    def bulk_create_tagging_history(cls,action_flag,tags,things_to_tag_pks,user,comment):
+        # TODO:
+        # CONTENT_TYPE_SINGLETON cannot be defined outside this,
+        # because it leads to a circular import ...
+        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+
+        #action = getattr(cls,action.upper())
+
+        entry_list = []
+        for pk in things_to_tag_pks:
+                entry_list.extend([ActionableTaggingHistory(action=action_flag,user=user,comment=comment,object_id=pk,
+                                                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                            tag=x) for x in tags])
+        ActionableTaggingHistory.objects.bulk_create(entry_list)
+
+
 
 

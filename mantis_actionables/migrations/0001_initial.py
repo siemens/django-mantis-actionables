@@ -4,12 +4,13 @@ from __future__ import unicode_literals
 from django.db import models, migrations
 from django.conf import settings
 import mantis_actionables.models
+import datetime
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('dingos', '0004_modify_vIO2FValue_view'),
+        ('dingos', '0005_AddTaggingHistory'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('contenttypes', '0001_initial'),
     ]
@@ -82,9 +83,9 @@ class Migration(migrations.Migration):
             name='Source',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('timestamp', models.DateTimeField()),
+                ('timestamp', models.DateTimeField(default=datetime.datetime(2015, 2, 5, 11, 18, 49, 553103))),
                 ('origin', models.SmallIntegerField(help_text=b"Chose 'internal (automated input)' for information stemming from automated mechanism such as sandbox reports etc.", choices=[(0, b'Uncertain'), (1, b'Public'), (2, b'Provided by vendor'), (3, b'Provided by partner'), (4, b'Internal (automated input)'), (5, b'Internal (manually selected)')])),
-                ('tlp', models.SmallIntegerField(choices=[(0, b'Unknown'), (10, b'White'), (20, b'Green'), (30, b'Amber'), (40, b'Red')])),
+                ('tlp', models.SmallIntegerField(default=0, choices=[(0, b'Unknown'), (10, b'White'), (20, b'Green'), (30, b'Amber'), (40, b'Red')])),
                 ('url', models.URLField(blank=True)),
                 ('object_id', models.PositiveIntegerField()),
                 ('content_type', models.ForeignKey(to='contenttypes.ContentType')),
@@ -126,6 +127,10 @@ class Migration(migrations.Migration):
             options={
             },
             bases=(models.Model,),
+        ),
+        migrations.AlterUniqueTogether(
+            name='source',
+            unique_together=set([('iobject', 'iobject_fact', 'iobject_factvalue', 'top_level_iobject', 'content_type', 'object_id')]),
         ),
         migrations.AddField(
             model_name='singletonobservable',

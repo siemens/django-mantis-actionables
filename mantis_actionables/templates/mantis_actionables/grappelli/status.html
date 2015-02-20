@@ -1,0 +1,9 @@
+{% extends "mantis_actionables/grappelli/table_base.html" %}
+
+{% block data %}
+  <td></td>
+  {% if cols|length == 3 %}
+  <td><select id="{{ table_name|lower }}_type_filter"></select></td>
+  {% endif %}
+  <td></td>
+{% endblock %}

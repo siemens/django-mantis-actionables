@@ -1,27 +1,53 @@
 __version__ = '0.0.1'
 
+import re
+
+from dingos import DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
 
 STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
                                  'iobject_type_family': 'stix.mitre.org'}]
 
-ACTIVE_MANTIS_EXPORTERS = ['hashes','ips','fqdns']
+ACTIVE_MANTIS_EXPORTERS = ['cybox_all']
 
-DASHBOARD_CONTENTS = [{'basis': 'SingletonObservable',
-                       'name' : 'IPs',
-                       'types' : ['IPv4','IPv6'],
-                       'show_type_column': True,
-                       },
-                      {'basis': 'SingletonObservable',
-                       'name' : 'Hashes',
-                       'types' : ['MD5','SHA1','SHA256'],
-                       'show_type_column': True,
-                       },
-                      {'basis': 'SingletonObservable',
-                       'name': 'FQDNs',
-                       'types' : 'FQDN',
-                       'show_type_column': False},
-                      {'basis': 'SingletonObservable',
-                       'name': 'URLs',
-                       'types' : 'URL',
-                       'show_type_column': False}]
+DASHBOARD_CONTENTS = {
+    'ips' : {
+        'basis': 'SingletonObservable',
+        'name' : 'IPs',
+        'types' : ['IP'],
+        'show_type_column': True,
+    },
+    'hashes' : {
+        'basis': 'SingletonObservable',
+        'name' : 'Hashes',
+        'types' : ['Hash'],
+        'show_type_column': True,
+    },
+    'fqdns' : {
+        'basis': 'SingletonObservable',
+        'name': 'FQDNs',
+        'types' : 'FQDN',
+        'show_type_column': False
+    },
+    'urls' : {
+        'basis': 'SingletonObservable',
+        'name': 'URLs',
+        'types' : 'URL',
+        'show_type_column': False
+    },
+    'emails' : {
+        'basis': 'SingletonObservable',
+        'name': 'Email Addresses',
+        'types' : ['Email_Address'],
+        'show_type_column': False
+    }
+
+}
+
+MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX = DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
+
+MANTIS_ACTIONABLES_STATUS_CREATION_FUNCTION_PATH = ""
+
+MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH = ""
+
+
 
