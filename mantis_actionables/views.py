@@ -171,6 +171,7 @@ def datatable_query(table_name, post, **kwargs):
         q = q.order_by(*order_cols)
 
 
+
     q_count_filtered = q.count()
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, 10)
@@ -183,6 +184,9 @@ def datatable_query(table_name, post, **kwargs):
         q = q[start:start+length]
         params.append(length)
         params.append(start)
+
+    print q.query
+    print (q,q_count_all,q_count_filtered)
 
     return (q,q_count_all,q_count_filtered)
 
@@ -213,6 +217,7 @@ class ActionablesBaseTableSource(BasicJSONView):
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
+        print POST.get('table_type')
 
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {
@@ -230,7 +235,7 @@ class ActionablesBaseTableSource(BasicJSONView):
         # We currently override the length to be fixed at 10
         POST[u'length'] = u'10'
 
-        table_name = POST.get('table_type')
+        table_name = POST.get('table_type').replace(' ','_')
         if table_name in DASHBOARD_CONTENTS.keys():
             # Build the query for the data, and fetch that stuff
             kwargs = {

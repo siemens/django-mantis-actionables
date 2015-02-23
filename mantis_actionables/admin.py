@@ -95,7 +95,7 @@ class SingletonObservableTypeAdmin(admin.ModelAdmin):
 
 class SingletonObservableAdmin(admin.ModelAdmin):
 
-    list_display = (u'id', 'type', 'value')
+    list_display = (u'id', 'type', 'subtype', 'value')
     list_filter = ('type',)
 
 

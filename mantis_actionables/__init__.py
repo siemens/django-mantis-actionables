@@ -10,6 +10,13 @@ STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Package',
 ACTIVE_MANTIS_EXPORTERS = ['cybox_all']
 
 DASHBOARD_CONTENTS = {
+'email_addresses' : {
+        'basis': 'SingletonObservable',
+        'name': 'Email Addresses',
+        'types' : ['Email_Address'],
+        'show_type_column': True
+    },
+
     'ips' : {
         'basis': 'SingletonObservable',
         'name' : 'IPs',
@@ -34,12 +41,6 @@ DASHBOARD_CONTENTS = {
         'types' : 'URL',
         'show_type_column': False
     },
-    'emails' : {
-        'basis': 'SingletonObservable',
-        'name': 'Email Addresses',
-        'types' : ['Email_Address'],
-        'show_type_column': False
-    }
 
 }
 

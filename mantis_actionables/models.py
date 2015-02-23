@@ -295,12 +295,21 @@ class SingletonObservableType(models.Model):
     cached_objects = CachingManager()
 
 
+    def __unicode__(self):
+        return "%s" % (self.name)
+
+
+
 class SingletonObservableSubtype(models.Model):
     name = models.CharField(max_length=255,blank=True,unique=True)
     description = models.TextField(blank=True)
 
     objects = models.Manager()
     cached_objects = CachingManager()
+
+
+    def __unicode__(self):
+        return "%s" % (self.name)
 
 
 class SingletonObservable(models.Model):
