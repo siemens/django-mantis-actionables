@@ -196,6 +196,14 @@ class ActionablesBaseTableSource(BasicJSONView):
     filter = {}
     select_related = []
 
+
+    curr_cols = None
+
+    def get_curr_cols(self):
+        if self.curr_cols == None:
+            self.init_data()
+        return self.curr_cols
+
     @classmethod
     def init_data(cls):
         #should be provided to init the column dicts
@@ -239,7 +247,7 @@ class ActionablesBaseTableSource(BasicJSONView):
         if table_name in DASHBOARD_CONTENTS.keys():
             # Build the query for the data, and fetch that stuff
             kwargs = {
-                'cols' : self.curr_cols,
+                'cols' : self.get_curr_cols(),
                 'filter' : self.filter,
                 'select_related' : self.select_related
             }
