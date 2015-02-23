@@ -529,7 +529,7 @@ class ActionablesTagHistoryView(BasicTemplateView):
         cols_history = ['tag__tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
         sel_rel = ['tag','user','content_type']
         history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
-                         filter(tag__context__name=self.tag_context).order_by('timestamp').\
+                         filter(tag__context__name=self.tag_context).order_by('-timestamp').\
                          values(*cols_history))
 
         obj_info_mapping = {}
