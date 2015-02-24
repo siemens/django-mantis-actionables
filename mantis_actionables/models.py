@@ -29,7 +29,7 @@ from datetime import datetime
 
 from django.utils import timezone
 
-from dingos.models import InfoObject, Fact, FactValue, Identifier
+from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace
 
 logger = logging.getLogger(__name__)
 
@@ -354,14 +354,16 @@ class ImportInfo(models.Model):
                                         related_name='import_infos')
 
     # timestamp here means import_timestamp (akin to dingos)
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
-    create_timestamp = models.DateTimeField()
+    create_timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
-    uid = models.SlugField(max_length=255)
-    namespace = models.ForeignKey("IdentifierNameSpace")
+    uid = models.SlugField(max_length=255,default="")
+
+    namespace = models.ForeignKey(IdentifierNameSpace)
 
     uri = models.URLField(blank=True,
+                          default="",
                           help_text="""URI pointing to further
                                        information concerning this
                                        import, e.g., the HTML
@@ -375,13 +377,13 @@ class ImportInfo(models.Model):
                             help_text="""Name of the information object, usually auto generated.
                                          from type and facts flagged as 'naming'.""")
 
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True,default="")
 
     # The field below will be replaced at some point of
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
-    related_threatactor = models.CharField(max_lenght=255,
+    related_threatactor = models.CharField(max_length=255,
                                            blank=True)
 
 

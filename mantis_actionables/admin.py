@@ -111,10 +111,10 @@ class IDSSignatureAdmin(admin.ModelAdmin):
     list_filter = ('type',)
 
 
-class ImportInfoAdmin(admin.ModelAdmin):
+#class ImportInfoAdmin(admin.ModelAdmin):
 
-    list_display = (u'id', 'user', 'comment')
-    list_filter = ('user',)
+#    list_display = (u'id', 'user', 'comment')
+#    list_filter = ('user',)
 
 
 def _register(model, admin_class):
@@ -129,4 +129,4 @@ _register(models.SingletonObservableType, SingletonObservableTypeAdmin)
 _register(models.SingletonObservable, SingletonObservableAdmin)
 _register(models.SignatureType, SignatureTypeAdmin)
 _register(models.IDSSignature, IDSSignatureAdmin)
-_register(models.ImportInfo, ImportInfoAdmin)
+#_register(models.ImportInfo, ImportInfoAdmin)
