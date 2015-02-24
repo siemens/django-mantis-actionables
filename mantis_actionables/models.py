@@ -349,17 +349,40 @@ class IDSSignature(models.Model):
 
 
 class ImportInfo(models.Model):
-    user = models.ForeignKey(User,
-                             # We allow this to be null to mark
-                             # imports carried out by the system
-                             null=True)
 
-    #iobject_identifier = models.ForeignKey(Identifier,
-    #                                       null=True,
-    #                                       help_text="If provided, should point to the identifier"
-    #                                                 " of a STIX Incident object")
+    creating_action = models.ForeignKey(Action,
+                                        related_name='import_infos')
 
-    comment = models.TextField(blank=True)
+    # timestamp here means import_timestamp (akin to dingos)
+    timestamp = models.DateTimeField()
+
+    create_timestamp = models.DateTimeField()
+
+    uid = models.SlugField(max_length=255)
+    namespace = models.ForeignKey("IdentifierNameSpace")
+
+    uri = models.URLField(blank=True,
+                          help_text="""URI pointing to further
+                                       information concerning this
+                                       import, e.g., the HTML
+                                       report of a malware analysis
+                                       through Cuckoo or similar.""")
+
+    name = models.CharField(max_length=255,
+                            blank=True,
+                            default='Unnamed',
+                            editable=False,
+                            help_text="""Name of the information object, usually auto generated.
+                                         from type and facts flagged as 'naming'.""")
+
+    description = models.TextField(blank=True)
+
+    # The field below will be replaced at some point of
+    # time by a Relationship to InfoObjects in the Dingos DB.
+    # To get started, we write the name directly
+
+    related_threatactor = models.CharField(max_lenght=255,
+                                           blank=True)
 
 
 class Context(models.Model):

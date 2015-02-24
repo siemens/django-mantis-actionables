@@ -62,13 +62,17 @@ def safe_cast(val, to_type, default=None):
 def datatable_query(table_name, post, **kwargs):
     post_dict = parser.parse(str(post.urlencode()))
 
+
     # Collect prepared statement parameters in here
     params = []
 
-    table = DASHBOARD_CONTENTS[table_name]
+    try:
+        table_spec = kwargs.pop('table_spec')
+    except:
+        table_spec = DASHBOARD_CONTENTS[table_name]
 
     cols = kwargs.pop('cols')
-    if not table['show_type_column']:
+    if not table_spec['show_type_column']:
         cols = cols['cut']
     else:
         cols = cols['all']
@@ -76,9 +80,10 @@ def datatable_query(table_name, post, **kwargs):
     cols = dict((x, y[0]) for x, y in cols.items())
 
     # Base query
-    if table['basis'] == 'SingletonObservable':
+    if table_spec['basis'] == 'SingletonObservable':
         base = SingletonObservable.objects
-        types = table['types']
+        types = table_spec['types']
+
         type_ids = []
         if isinstance(types,str):
             types = [types]
@@ -87,22 +92,21 @@ def datatable_query(table_name, post, **kwargs):
                 type_ids.append(singleton_observable_types[type])
             except KeyError:
                 continue
+        q = base
+
         if type_ids:
-            q = base
+            q = q.filter(type_id__in=type_ids)
 
-            # extend query by kwargs['select_related']
-            q = q.select_related(*kwargs.pop('select_related',[]))
+        # extend query by kwargs['select_related']
+        q = q.select_related(*kwargs.pop('select_related',[]))
 
-            # extend query by kwargs['filter']
-            for filter in kwargs.pop('filter',[]):
-                q = q.filter(**filter)
+        # extend query by kwargs['filter']
+        for filter in kwargs.pop('filter',[]):
+            q = q.filter(**filter)
 
-            q = q.filter(type_id__in=type_ids).values_list(*(cols.values()))
-            #sources__id for join on sources table
-            q_count_all = q.count()
-
-        else:
-            return (base.none(),0,0)
+        q = q.values_list(*(cols.values()))
+        #sources__id for join on sources table
+        q_count_all = q.count()
 
 
     # Treat the filter values (WHERE clause)
@@ -196,6 +200,8 @@ class ActionablesBaseTableSource(BasicJSONView):
     filter = {}
     select_related = []
 
+    table_spec = None
+
     @classmethod
     def init_data(cls):
         #should be provided to init the column dicts
@@ -243,6 +249,8 @@ class ActionablesBaseTableSource(BasicJSONView):
                 'filter' : self.filter,
                 'select_related' : self.select_related
             }
+            if self.table_spec:
+                kwargs['table_spec'] = self.table_spec
 
             q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, **kwargs)
 
@@ -296,6 +304,16 @@ class ActionablesTableStandardSource(ActionablesBaseTableSource):
             if len(namespaces) > 1:
                 for ns in namespaces:
                     res['cols'][table_name + '_ns_filter'].append({ns : ns})
+
+
+class ActionablesTableAllImports(ActionablesTableStandardSource):
+    table_spec =  {
+        'basis': 'SingletonObservable',
+        'name': 'All Imports',
+        'types' : [],
+        'show_type_column': True
+    },
+    pass
 
 
 class ActionablesTableStatusSource(ActionablesBaseTableSource):
