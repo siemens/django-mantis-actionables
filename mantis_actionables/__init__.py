@@ -32,14 +32,14 @@ DASHBOARD_CONTENTS = {
     'fqdns' : {
         'basis': 'SingletonObservable',
         'name': 'FQDNs',
-        'types' : 'FQDN',
+        'types' : ['FQDN'],
         'show_type_column': False
     },
     'urls' : {
         'basis': 'SingletonObservable',
         'name': 'URLs',
-        'types' : 'URL',
-        'show_type_column': False
+        'types' : ['URL'],
+        'show_type_column': True
     },
 
 }

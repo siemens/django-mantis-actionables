@@ -37,7 +37,7 @@ from dingos.core.utilities import listify
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
 from .filter import ActionablesContextFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
@@ -89,7 +89,8 @@ def datatable_query(table_name, post, **kwargs):
             types = [types]
         for type in types:
             try:
-                type_ids.append(singleton_observable_types[type])
+                type_obj,created = SingletonObservableType.cached_objects.get_or_create(name=type)
+                type_ids.append(type_obj.pk) #singleton_observable_types[type])
             except KeyError:
                 continue
         q = base
@@ -189,8 +190,6 @@ def datatable_query(table_name, post, **kwargs):
         params.append(length)
         params.append(start)
 
-    print q.query
-    print (q,q_count_all,q_count_filtered)
 
     return (q,q_count_all,q_count_filtered)
 
@@ -230,7 +229,6 @@ class ActionablesBaseTableSource(BasicJSONView):
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
-        print POST.get('table_type')
 
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {

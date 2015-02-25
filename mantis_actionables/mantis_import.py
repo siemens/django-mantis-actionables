@@ -59,6 +59,7 @@ singleton_observable_types_qs = SingletonObservableType.objects.all()
 for type in singleton_observable_types_qs:
     singleton_observable_types[type.name] = type.pk
 
+
 #build a name to pk mapping for SingletonObservableTypes on server startup
 singleton_observable_subtypes = {}
 singleton_observable_subtypes_qs = SingletonObservableSubtype.objects.all()
