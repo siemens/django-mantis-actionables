@@ -19,11 +19,16 @@ from menu import Menu, MenuItem
 from django.core.urlresolvers import reverse
 
 
-# Menu.add_item("mantis_main",
-#               MenuItem("Actionables Dash",
-#                        reverse("mantis_actionables:index"),
-#                        weight = 5,
-#                        check = lambda request: request.user.is_authenticated(),
-#                    )
-# )
-
+Menu.add_item("mantis_main",
+              MenuItem("Actionables",
+                       reverse("actionables_imports"),
+                       weight = 5,
+                       check = lambda request: request.user.is_authenticated(),
+                       children = (
+                           MenuItem("Imports", reverse("actionables_imports"), weight = 5 ),
+                           MenuItem("Contexts", reverse("actionables_context_list"), weight = 5 ),
+                           MenuItem("Dashboard", reverse("mantis_dashboard:index"), weight = 5 ),
+                           MenuItem("Bulk Search", reverse("mantis_dashboard:bulk_search"), weight = 10 )
+                       )
+                   )
+)

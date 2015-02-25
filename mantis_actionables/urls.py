@@ -28,7 +28,7 @@ from .views import ActionablesTableStandardSource, \
 
 urlpatterns = patterns(
     'mantis_actionables.views',
-    url(r'^imports/$', 'imports', name='imports'),
+    url(r'^imports/$', 'imports', name='actionables_imports'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
     url(r'^tbl_data/standard$', ActionablesTableStandardSource.as_view(), name='table_data_source'),
     url(r'^tbl_data/status$', ActionablesTableStatusSource.as_view(), name='table_data_source_status'),

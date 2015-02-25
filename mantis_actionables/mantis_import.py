@@ -327,12 +327,12 @@ def update_and_transfer_tags(fact_pks,user=None):
                 status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
                                                      object_id=singleton.id,
                                                      active=True).order_by('-timestamp')
-                status2X = status2xes[0]
+                status2x = status2xes[0]
 
                 status2xes.update(active=False)
 
-                status2X.active=True
-                status2X.save()
+                status2x.active=True
+                status2x.save()
 
                 status = status2x.status
                 new_status,created = updateStatus(status=status,
@@ -385,7 +385,7 @@ def update_and_transfer_tags(fact_pks,user=None):
 
 
 
-def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
+def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None):
     """
     The function carries out the following actions:
 
@@ -423,7 +423,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
             top_level_iobj_pks = top_level_iobjs
 
 
-    action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+    action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
     results_per_top_level_obj = []
 
@@ -461,9 +461,9 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs):
 
     for (top_level_iobj_pk, results) in results_per_top_level_obj:
         #async_export_to_actionables(top_level_iobj_pk,results,action=action)
-        import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action)
+        import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action,user=user)
 
-def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None):
+def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None,user=None):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -514,7 +514,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
     iobj2tlp_map = {}
 
     if not action:
-        action, created_action = Action.objects.get_or_create(user=None,comment="Actionables Import")
+        action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
     containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
 
@@ -573,11 +573,10 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
             status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
             status2x.save()
 
-        else:
             logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
 
     fact_pks = set(map(lambda x: x.get('fact.pk'), results))
-    update_and_transfer_tags(fact_pks)
+    update_and_transfer_tags(fact_pks,user=user)
 
 
 def process_STIX_Reports(imported_since, imported_until=None):
