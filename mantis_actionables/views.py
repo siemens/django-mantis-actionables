@@ -59,19 +59,25 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def datatable_query(table_name, post, **kwargs):
+def datatable_query(table_name, post, paginate_at, **kwargs):
     post_dict = parser.parse(str(post.urlencode()))
 
 
     # Collect prepared statement parameters in here
     params = []
 
+    table_spec = None
+
     try:
         table_spec = kwargs.pop('table_spec')
     except:
+        pass
+
+    if not table_spec:
         table_spec = DASHBOARD_CONTENTS[table_name]
 
     cols = kwargs.pop('cols')
+
     if not table_spec['show_type_column']:
         cols = cols['cut']
     else:
@@ -162,7 +168,9 @@ def datatable_query(table_name, post, **kwargs):
 
     # Treat the ordering of columns
     order_cols = []
+
     for colk, colv in post_dict.get('order', {}).iteritems():
+
         scol = colv.get('column', 0)
         scol = cols.get(scol)
         if not scol:
@@ -179,9 +187,9 @@ def datatable_query(table_name, post, **kwargs):
 
     q_count_filtered = q.count()
     # Treat the paging/limit
-    length = safe_cast(post_dict.get('length'), int, 10)
+    length = safe_cast(post_dict.get('length'), int, paginate_at)
     if length<-1:
-        length = 10
+        length = paginate_at
     start = safe_cast(post_dict.get('start'), int, 0)
     if start<0:
         start = 0
@@ -194,15 +202,16 @@ def datatable_query(table_name, post, **kwargs):
     return (q,q_count_all,q_count_filtered)
 
 
-class ActionablesBaseTableSource(BasicJSONView):
+class BasicTableDataProvider(BasicJSONView):
     #add here filters and select_related statements to the base query
     filter = {}
     select_related = []
 
     table_spec = None
 
-    curr_cols = None
+    table_rows = 10
 
+    curr_cols = None
     def get_curr_cols(self):
         if self.curr_cols == None:
             self.init_data()
@@ -219,12 +228,12 @@ class ActionablesBaseTableSource(BasicJSONView):
             res['data'].append(row)
 
         #treat filters
-        if res['draw'] == 1:
-            res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
-            types = DASHBOARD_CONTENTS[table_name]['types']
-            if len(types) > 1:
-                for type_name in types :
-                    res['cols'][table_name + '_type_filter'].append({type_name: type_name})
+        #if res['draw'] == 1:
+        #    res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
+        #    types = DASHBOARD_CONTENTS[table_name]['types']
+        #    if len(types) > 1:
+        #        for type_name in types :
+        #            res['cols'][table_name + '_type_filter'].append({type_name: type_name})
 
     @property
     def returned_obj(self):
@@ -244,9 +253,12 @@ class ActionablesBaseTableSource(BasicJSONView):
         # http://www.datatables.net/manual/server-side#Configuration
 
         # We currently override the length to be fixed at 10
-        POST[u'length'] = u'10'
+        POST[u'length'] = "%s" % self.table_rows
+
 
         table_name = POST.get('table_type').replace(' ','_')
+
+        kwargs =  {}
         if table_name in DASHBOARD_CONTENTS.keys():
             # Build the query for the data, and fetch that stuff
             kwargs = {
@@ -254,15 +266,22 @@ class ActionablesBaseTableSource(BasicJSONView):
                 'filter' : self.filter,
                 'select_related' : self.select_related
             }
-            if self.table_spec:
-                kwargs['table_spec'] = self.table_spec
+        elif self.table_spec:
+             kwargs = {
+                'cols' : self.get_curr_cols(),
+                'filter' : self.filter,
+                'select_related' : self.select_related
+             }
 
-            q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, **kwargs)
+        if kwargs:
+             kwargs['table_spec'] = self.table_spec
 
-            self.postprocess(table_name,res,q)
-        return res
+             q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, paginate_at = self.table_rows, **kwargs)
 
-class ActionablesTableStandardSource(ActionablesBaseTableSource):
+             self.postprocess(table_name,res,q)
+             return res
+
+class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
     @classmethod
     def init_data(cls):
         cls.curr_cols = COLS.setdefault('standard',{})
@@ -293,35 +312,67 @@ class ActionablesTableStandardSource(ActionablesBaseTableSource):
         for row in q:
             row = list(row)
             row[0] = Source.TLP_COLOR_CSS[row[0]]
-            row[1] = datetime.datetime.date(row[1]).strftime('%d-%m-%Y %X')
+            #print row[1]
+            #row[1] = datetime.datetime.date(row[1]).strftime('%Y-%m-%d %H:%M:%S %Z')
+            #print "> %s" % row[1]
             res['data'].append(row)
 
         #treat filters
-        if res['draw'] == 1:
-            res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
-            types = DASHBOARD_CONTENTS[table_name]['types']
-            if len(types) > 1:
-                for type_name in types :
-                    res['cols'][table_name + '_type_filter'].append({type_name: type_name})
-            res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
-            res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
-            namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))
-            if len(namespaces) > 1:
-                for ns in namespaces:
-                    res['cols'][table_name + '_ns_filter'].append({ns : ns})
+        # if res['draw'] == 1:
+        #     res['cols'][table_name + '_type_filter'] = [{'all': 'All'}]
+        #     types = DASHBOARD_CONTENTS[table_name]['types']
+        #     if len(types) > 1:
+        #         for type_name in types :
+        #             res['cols'][table_name + '_type_filter'].append({type_name: type_name})
+        #     res['cols'][table_name + '_tlp_filter'] = [{'all': 'All'}]
+        #     res['cols'][table_name + '_ns_filter'] = [{'all' : 'All'}]
+        #     namespaces = list(IdentifierNameSpace.objects.all().values_list('uri',flat=True))
+        #     if len(namespaces) > 1:
+        #         for ns in namespaces:
+        #             res['cols'][table_name + '_ns_filter'].append({ns : ns})
+        #
 
-
-class ActionablesTableAllImports(ActionablesTableStandardSource):
+class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWithSourceDataProvider):
     table_spec =  {
         'basis': 'SingletonObservable',
         'name': 'All Imports',
         'types' : [],
         'show_type_column': True
-    },
-    pass
+    }
+
+    # TODO only ten works at the moment -- there is some dependency on 10
+    # in the calculation of the pagination
+    table_rows = 10
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('all_imports',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('sources__tlp','TLP','0'),
+                ('sources__timestamp','Source TS','0'),
+                ('type__name','Type','0'),
+                ('subtype__name','Subtype','0'),
+                ('value','Value','1'),
+                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
+                ('sources__top_level_iobject__name','STIX Name','0')
+            ]
+
+            #optinal columns to display (index,query_select_row,col_name,searchable)
+            OPT_COLS = []
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            for index,content in OPT_COLS:
+                COLS_TO_DISPLAY.insert(index,content)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
 
 
-class ActionablesTableStatusSource(ActionablesBaseTableSource):
+
+class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
     @classmethod
     def init_data(cls):
         cls.curr_cols = COLS.setdefault('status',{})
@@ -333,7 +384,7 @@ class ActionablesTableStatusSource(ActionablesBaseTableSource):
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
                 ('value','Value','1'),
-                ('mantis_tags','Tags','1')
+                ('actionable_tags_cache','Tags','1')
             ]
 
             #optinal columns to display (index,query_select_row,col_name,searchable)
@@ -345,17 +396,86 @@ class ActionablesTableStatusSource(ActionablesBaseTableSource):
                 COLS_TO_DISPLAY.insert(index,content)
             fillColDict(cols_all,COLS_TO_DISPLAY)
 
-    filter = [{
-        'status_thru__active' : True
-    }]
-    select_related = ['status_thru__status']
+    #filter = [{
+    #    'status_thru__active' : True
+    #}]
+    #select_related = ['status_thru__status']
+
+class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWithStatusDataProvider):
+    table_spec =  {
+    'basis': 'SingletonObservable',
+    'name': 'Indicators and their status',
+    'types' : [],
+    'show_type_column': True
+    }
+
+
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('all_status_infos',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('type__name','Type','1'),
+                ('subtype__name','Subtype','1'),
+                ('value','Value','1'),
+                ('actionable_tags_cache','Tags','1')
+            ]
+
+            #optinal columns to display (index,query_select_row,col_name,searchable)
+            OPT_COLS = []
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            for index,content in OPT_COLS:
+                COLS_TO_DISPLAY.insert(index,content)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
+
+    #filter = [{
+    #    'status_thru__active' : True
+    #}]
+    #select_related = ['status_thru__status']
+
+
+def all_status_infos(request):
+    SingletonObservablesWithStatusOneTableDataProvider.init_data()
+    name = 'all_status_infos'
+    content_dict = {
+        'title' : 'Indicators and their status',
+        'tables' : [],
+        'view' : name
+    }
+
+
+    content_dict['tables'].append((content_dict['title'],COLS[name]['all']))
+
+    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
+                              content_dict, context_instance=RequestContext(request))
+
+
+
+def all_imports(request):
+    SingeltonObservablesWithSourceOneTableDataProvider.init_data()
+    name = 'all_imports'
+    content_dict = {
+        'title' : 'Indicators and their sources',
+        'tables' : [],
+        'view' : name
+    }
+
+    content_dict['tables'].append(('All',COLS[name]['all']))
+    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
+                              content_dict, context_instance=RequestContext(request))
 
 
 def imports(request):
-    ActionablesTableStandardSource.init_data()
+    SingletonObservablesWithSourceDataProvider.init_data()
     name = 'standard'
     content_dict = {
-        'title' : 'Actionables',
+        'title' : 'Indicators and their sources',
         'tables' : [],
         'view' : name
     }
@@ -369,10 +489,10 @@ def imports(request):
                               content_dict, context_instance=RequestContext(request))
 
 def status_infos(request):
-    ActionablesTableStatusSource.init_data()
+    SingletonObservablesWithStatusDataProvider.init_data()
     name = 'status'
     content_dict = {
-        'title' : 'Imported Observables - Status View',
+        'title' : 'Indicators and their status',
         'tables' : [],
         'view' : name
     }
@@ -473,7 +593,6 @@ def processActionablesTagging(data,**kwargs):
 
 class ActionablesContextView(BasicTemplateView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
-
 
     @property
     def title(self):
