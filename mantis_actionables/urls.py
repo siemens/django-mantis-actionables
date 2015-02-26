@@ -18,8 +18,10 @@
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, url
-from .views import ActionablesTableStandardSource, \
-    ActionablesTableStatusSource, \
+from .views import SingletonObservablesWithSourceDataProvider, \
+    SingeltonObservablesWithSourceOneTableDataProvider, \
+    SingletonObservablesWithStatusDataProvider, \
+    SingletonObservablesWithStatusOneTableDataProvider, \
     ActionablesContextView, \
     ActionablesContextList, \
     ActionablesContextEditView, \
@@ -28,11 +30,15 @@ from .views import ActionablesTableStandardSource, \
 
 urlpatterns = patterns(
     'mantis_actionables.views',
-    url(r'^imports/$', 'imports', name='imports'),
+    url(r'^imports/$', 'imports', name='actionables_imports'),
+    url(r'^all_imports/$', 'all_imports', name='actionables_all_imports'),
+    url(r'^status_infos/$', 'status_infos', name='actionables_status_infos'),
+    url(r'^all_status_infos/$', 'all_status_infos', name='actionables_all_status_infos'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
-    url(r'^tbl_data/standard$', ActionablesTableStandardSource.as_view(), name='table_data_source'),
-    url(r'^tbl_data/status$', ActionablesTableStatusSource.as_view(), name='table_data_source_status'),
-    url(r'^status_infos/$', 'status_infos', name='status_infos'),
+    url(r'^tbl_data/all_imports$', SingeltonObservablesWithSourceOneTableDataProvider.as_view(), name='table_data_source'),
+    url(r'^tbl_data/standard$', SingletonObservablesWithSourceDataProvider.as_view(), name='table_data_source'),
+    url(r'^tbl_data/status$', SingletonObservablesWithStatusDataProvider.as_view(), name='table_data_source_status'),
+    url(r'^tbl_data/all_status_infos$', SingletonObservablesWithStatusOneTableDataProvider.as_view(), name='table_data_source_status'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/?$', ActionablesContextView.as_view(), name='actionables_context_view'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/edit$', ActionablesContextEditView.as_view(), name='actionables_context_edit_view'),
     url(r'^context/?$', ActionablesContextList.as_view(), name='actionables_context_list'),
