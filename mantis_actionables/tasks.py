@@ -22,6 +22,7 @@ import logging
 
 from celery import shared_task
 
+from mantis_actionables.core import crowdstrike
 
 
 logger = logging.getLogger(__name__)
@@ -36,3 +37,7 @@ def async_export_to_actionables(top_level_iobj_pk,
     import_singleton_observables_from_export_result(top_level_iobj_pk,
                                                     export_results)
 
+
+@shared_task
+def import_crowdstrike_csv(csv_file):
+    crowdstrike.import_crowdstrike_csv(csv_file)
