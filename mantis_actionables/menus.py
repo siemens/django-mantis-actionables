@@ -18,8 +18,16 @@
 from menu import Menu, MenuItem
 from django.core.urlresolvers import reverse
 
+try:
+    dashboard_index_url  = reverse("mantis_dashboard:index")
+    dashboard_bulk_search_url = reverse("mantis_dashboard:bulk_search")
+except:
+    dashboard_index_url = None
+    dashboard_bulk_search_url = None
 
-Menu.add_item("mantis_main",
+if dashboard_index_url:
+
+    Menu.add_item("mantis_main",
               MenuItem("Actionables",
                        reverse("actionables_imports"),
                        weight = 5,
@@ -32,4 +40,17 @@ Menu.add_item("mantis_main",
                            MenuItem("Bulk Search", reverse("mantis_dashboard:bulk_search"), weight = 10 )
                        )
                    )
-)
+    )
+else:
+    Menu.add_item("mantis_main",
+              MenuItem("Actionables",
+                       reverse("actionables_imports"),
+                       weight = 5,
+                       check = lambda request: request.user.is_authenticated(),
+                       children = (
+                           MenuItem("Import Sources", reverse("actionables_all_imports"), weight = 5 ),
+                           MenuItem("Status Infos", reverse("actionables_all_status_infos"), weight = 5 ),
+                           MenuItem("Investigations", reverse("actionables_context_list"), weight = 5 ),
+                       )
+                   )
+    )
