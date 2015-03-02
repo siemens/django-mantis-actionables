@@ -133,7 +133,9 @@ class Source(models.Model):
                                           null=True,
                                           related_name='actionable_thru')
 
-    top_level_iobject = models.ForeignKey(InfoObject,related_name='related_actionable_thru')
+    top_level_iobject = models.ForeignKey(InfoObject,
+                                          null=True,
+                                          related_name='related_actionable_thru')
 
     # If the source is a manual import, we reference the Import Info
 
@@ -356,7 +358,7 @@ class ImportInfo(models.Model):
     # timestamp here means import_timestamp (akin to dingos)
     timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
-    create_timestamp = models.DateTimeField(auto_now_add=True, blank=True)
+    create_timestamp = models.DateTimeField(auto_now_add=False, blank=True)
 
     uid = models.SlugField(max_length=255,default="")
 
@@ -379,12 +381,26 @@ class ImportInfo(models.Model):
 
     description = models.TextField(blank=True,default="")
 
+    # type crowdstrike actor/report
+    TYPE_UNKOWN = 0
+    TYPE_CROWDSTRIKE_ACTOR = 10
+    TYPE_CROWDSTRIKE_REPORT = 20
+    TYPE_CHOICES = [
+        (TYPE_UNKOWN, "Unknown"),
+        (TYPE_CROWDSTRIKE_ACTOR, "Crowdstrike Actor"),
+        (TYPE_CROWDSTRIKE_REPORT, "Crowdstrike Report"),
+    ]
+    type = models.SmallIntegerField(choices=TYPE_CHOICES, default=TYPE_UNKOWN)
+
     # The field below will be replaced at some point of
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
     related_threatactor = models.CharField(max_length=255,
                                            blank=True)
+
+    class Meta:
+        unique_together = ('uid', 'namespace')
 
 
 class Context(models.Model):

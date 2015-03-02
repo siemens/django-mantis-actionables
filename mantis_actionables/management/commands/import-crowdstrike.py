@@ -20,7 +20,7 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from mantis_actionables import tasks
+from mantis_actionables.core.crowdstrike import import_crowdstrike_csv
 
 
 class Command(BaseCommand):
@@ -48,7 +48,7 @@ class Command(BaseCommand):
         if not os.path.isfile(csv_file):
             raise CommandError('"%s" cannot be accessed!' % csv_file)
 
-        tasks.import_crowdstrike_csv(csv_file)
-        tasks.import_crowdstrike_csv.apply_async((csv_file,))
+        ignored_lines = import_crowdstrike_csv(csv_file, printing=True)
+        print ignored_lines
 
         print 'file imported'
