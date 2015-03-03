@@ -282,6 +282,9 @@ class BasicTableDataProvider(BasicJSONView):
              return res
 
 class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
+
+    select_related = ['sources__top_level_iobject_identifier__namespace',
+                      'sources__top_level_iobject_identifier__latest' ]
     @classmethod
     def init_data(cls):
         cls.curr_cols = COLS.setdefault('standard',{})
@@ -295,8 +298,8 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
                 ('sources__tlp','TLP','0'),
                 ('sources__timestamp','Source TS','0'),
                 ('value','Value','1'),
-                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-                ('sources__top_level_iobject__name','STIX Name','0')
+                ('sources__top_level_iobject_identifier__namespace__uri','STIX Namespace','0'),
+                ('sources__top_level_iobject_identifier__latest__name','STIX Name','0')
             ]
 
             #optinal columns to display (index,query_select_row,col_name,searchable)
@@ -358,8 +361,8 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
                 ('type__name','Type','0'),
                 ('subtype__name','Subtype','0'),
                 ('value','Value','1'),
-                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-                ('sources__top_level_iobject__name','STIX Name','0')
+                ('sources__top_level_iobject_identifier__namespace__uri','STIX Namespace','0'),
+                ('sources__top_level_iobject_identifier__latest__name','STIX Name','0')
             ]
 
             #optinal columns to display (index,query_select_row,col_name,searchable)

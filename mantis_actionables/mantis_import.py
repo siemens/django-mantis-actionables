@@ -433,6 +433,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
+        top_level_iobj_identifier_pk = graph.node[top_level_iobj_pk]['identifier_pk']
+
         postprocessor=None
 
         results = []
@@ -452,7 +454,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                     # each iteration.
                                                     details_obj = postprocessor
                                                     )
-                (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='dict')
+                (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='exporter')
 
                 results += part_results
 
@@ -462,9 +464,10 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
 
     for (top_level_iobj_pk, results) in results_per_top_level_obj:
         #async_export_to_actionables(top_level_iobj_pk,results,action=action)
-        import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action,user=user)
 
-def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None,user=None):
+        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,results,action=action,user=user)
+
+def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,results,action=None,user=None):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -530,9 +533,9 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
 
     for result in results:
 
-        iobj_pk = int(result['object.pk'])
-        fact_pk = int(result['fact.pk'])
-        fact_value_pk = int(result['value.pk'])
+        identifier_pk = int(result['_identifier_pk'])
+        fact_pk = int(result['_io2fv'].fact_id)
+        fact_value_pk = int(result['_io2fv'].factvalue_id)
         type = result.get('actionable_type','')
         subtype = result.get('actionable_subtype','')
 
@@ -553,17 +556,17 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
                                                                         subtype=singleton_subtype_obj,
                                                                         value=value)
 
-        source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
+        source, created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
                                                        iobject_fact_id=fact_pk,
                                                        iobject_factvalue_id=fact_value_pk,
-                                                       top_level_iobject_id=top_level_iobj_pk,
+                                                       top_level_iobject_identifier_id=top_level_iobj_identifier_pk,
                                                        origin=Source.ORIGIN_UNKNOWN,
                                                        processing=Source.PROCESSING_UNKNOWN,
                                                        object_id=observable.id,
                                                        content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
                                                     )
 
-        tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
+        tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
         if not source.tlp == tlp_color:
             source.tlp = tlp_color
             source.save()

@@ -224,8 +224,7 @@ class Source(models.Model):
 
     class Meta:
         unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
-    #class Meta:
-    #    unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
+
 
 
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
