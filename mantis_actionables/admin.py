@@ -46,10 +46,10 @@ class SourceAdmin(admin.ModelAdmin):
     )
     list_filter = ('timestamp', 'import_info')
     raw_id_fields = (
-        'iobject',
+        'iobject_identifier',
         'iobject_fact',
         'iobject_factvalue',
-        'top_level_iobject',
+        'top_level_iobject_identifier',
         'content_type',
     )
 
