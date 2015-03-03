@@ -33,10 +33,10 @@ class SourceAdmin(admin.ModelAdmin):
     list_display = (
         u'id',
         'timestamp',
-        'iobject',
+        'iobject_identifier',
         'iobject_fact',
         'iobject_factvalue',
-        'top_level_iobject',
+        'top_level_iobject_identifier',
         'import_info',
         'origin',
         'tlp',

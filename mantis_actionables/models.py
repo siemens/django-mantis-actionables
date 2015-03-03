@@ -29,7 +29,7 @@ from datetime import datetime
 
 from django.utils import timezone
 
-from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace
+from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace, Identifier
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +122,14 @@ class Source(models.Model):
 
     # If the source is MANTIS, we populate the following fields:
 
-    iobject = models.ForeignKey(InfoObject,
-                                null=True,
-                                related_name='actionable_thru')
+    iobject_identifier = models.ForeignKey(Identifier,
+                                           null=True,
+                                           related_name = 'actionable_thru')
+
+    #iobject = models.ForeignKey(InfoObject,
+    #                            null=True,
+    #                            related_name='actionable_thru')
+
     iobject_fact = models.ForeignKey(Fact,
                                      null=True,
                                      related_name='actionable_thru')
@@ -133,9 +138,16 @@ class Source(models.Model):
                                           null=True,
                                           related_name='actionable_thru')
 
-    top_level_iobject = models.ForeignKey(InfoObject,
-                                          null=True,
-                                          related_name='related_actionable_thru')
+    #top_level_iobject = models.ForeignKey(InfoObject,
+    #                                      null=True,
+    #                                      related_name='related_actionable_thru')
+
+
+    top_level_iobject_identifier = models.ForeignKey(Identifier,
+                                                     null=True,
+                                                     related_name='related_actionable_thru')
+
+
 
     # If the source is a manual import, we reference the Import Info
 
@@ -211,7 +223,7 @@ class Source(models.Model):
     yielded = generic.GenericForeignKey('content_type', 'object_id')
 
     class Meta:
-        unique_together = ('iobject','iobject_fact','iobject_factvalue','top_level_iobject','content_type','object_id')
+        unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
 
 
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
