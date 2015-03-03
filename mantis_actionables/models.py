@@ -126,9 +126,9 @@ class Source(models.Model):
                                            null=True,
                                            related_name = 'actionable_thru')
 
-    #iobject = models.ForeignKey(InfoObject,
-    #                            null=True,
-    #                            related_name='actionable_thru')
+    iobject = models.ForeignKey(InfoObject,
+                                null=True,
+                                related_name='actionable_thru')
 
     iobject_fact = models.ForeignKey(Fact,
                                      null=True,
@@ -138,9 +138,9 @@ class Source(models.Model):
                                           null=True,
                                           related_name='actionable_thru')
 
-    #top_level_iobject = models.ForeignKey(InfoObject,
-    #                                      null=True,
-    #                                      related_name='related_actionable_thru')
+    top_level_iobject = models.ForeignKey(InfoObject,
+                                          null=True,
+                                          related_name='related_actionable_thru')
 
 
     top_level_iobject_identifier = models.ForeignKey(Identifier,
@@ -224,6 +224,8 @@ class Source(models.Model):
 
     class Meta:
         unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
+    #class Meta:
+    #    unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
 
 
 INF_TIME = datetime.max.replace(tzinfo=timezone.utc)
