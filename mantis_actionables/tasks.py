@@ -30,12 +30,13 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def async_export_to_actionables(top_level_iobj_identifier_pk,
+                                top_level_iobj_pk,
                                 export_results,
                                 user=None):
-    print "ASYNC export carried out"
     from mantis_actionables.mantis_import import import_singleton_observables_from_export_result
 
     import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
+                                                    top_level_iobj_pk,
                                                     export_results,
                                                     user=user)
 

@@ -72,6 +72,7 @@ class CachingManager(models.Manager):
         "SingletonObservableSubtype" : ['name'],
         "Context" : ["name"],
         "TagName" : ["name"],
+        "EntityType" : ["name"],
         "ActionableTag" : ["context_id","tag_id"]
     }
 
@@ -117,6 +118,32 @@ class Action(models.Model):
     comment = models.TextField(blank=True)
 
 
+class EntityType(models.Model):
+    name = models.CharField(max_length=256)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+
+
+class STIX_Entity(models.Model):
+
+    entity_type = models.ForeignKey(EntityType)
+    iobject_identifier = models.ForeignKey(Identifier,
+                                           null=True,
+                                           )
+    non_iobject_identifier = models.CharField(max_length=256,
+                                              blank=True)
+
+    essence = models.TextField(blank=True)
+
+
+    def __unicode__(self):
+        return self.essence
+
+    class Meta:
+        unique_together = ('iobject_identifier','non_iobject_identifier')
+
 class Source(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
@@ -138,15 +165,19 @@ class Source(models.Model):
                                           null=True,
                                           related_name='actionable_thru')
 
-    top_level_iobject = models.ForeignKey(InfoObject,
-                                          null=True,
-                                          related_name='related_actionable_thru')
 
 
     top_level_iobject_identifier = models.ForeignKey(Identifier,
                                                      null=True,
                                                      related_name='related_actionable_thru')
 
+    top_level_iobject = models.ForeignKey(InfoObject,
+                                          null=True,
+                                          related_name='related_actionable_thru')
+
+
+
+    related_stix_entities = models.ManyToManyField(STIX_Entity)
 
 
     # If the source is a manual import, we reference the Import Info

@@ -42,7 +42,9 @@ from .models import SingletonObservable,\
     Source, \
     Status2X, \
     Action, \
-    ActionableTag
+    ActionableTag, \
+    STIX_Entity, \
+    EntityType
 
 from .status_management import createStatus, updateStatus
 
@@ -435,6 +437,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                  )
         top_level_iobj_identifier_pk = graph.node[top_level_iobj_pk]['identifier_pk']
 
+
         postprocessor=None
 
         results = []
@@ -465,9 +468,9 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
     for (top_level_iobj_pk, results) in results_per_top_level_obj:
         #async_export_to_actionables(top_level_iobj_pk,results,action=action)
 
-        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,results,action=action,user=user)
+        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user)
 
-def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,results,action=None,user=None):
+def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=None,user=None):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -517,6 +520,10 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
     iobj2tlp_map = {}
 
+    # Mapping from identifier_pks to related_entities
+
+    identifier_pk_2_related_entity_map = {}
+
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
@@ -534,8 +541,9 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
     for result in results:
 
         identifier_pk = int(result['_identifier_pk'])
-        fact_pk = int(result['_io2fv'].fact_id)
-        fact_value_pk = int(result['_io2fv'].factvalue_id)
+        iobject_pk = int(result['_iobject_pk'])
+        fact_pk = int(result['_fact_pk'])
+        fact_value_pk = int(result['_value_pk'])
         type = result.get('actionable_type','')
         subtype = result.get('actionable_subtype','')
 
@@ -547,36 +555,77 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         value = result.get('actionable_info','')
 
         if not (type and value):
+            logger.error("Incomplete actionable information %s/%s for value %s" % (type,subtype,value))
             continue
+
+        processing_info = Source.PROCESSING_UNKNOWN
+        origin_info = Source.ORIGIN_UNKNOWN
 
         singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
         singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
 
-        observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
-                                                                        subtype=singleton_subtype_obj,
+        observable, observable_created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
+                                                                                   subtype=singleton_subtype_obj,
                                                                         value=value)
 
-        source, created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
+        source, source_created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
+
                                                        iobject_fact_id=fact_pk,
                                                        iobject_factvalue_id=fact_value_pk,
                                                        top_level_iobject_identifier_id=top_level_iobj_identifier_pk,
-                                                       origin=Source.ORIGIN_UNKNOWN,
-                                                       processing=Source.PROCESSING_UNKNOWN,
                                                        object_id=observable.id,
-                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
+                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                       defaults = {
+                                                          'iobject_id': iobject_pk,
+                                                          'top_level_iobject_id' : top_level_iobj_pk,
+                                                          'processing': processing_info,
+                                                          'origin': origin_info
+                                                       }
+
                                                     )
+        if not source_created:
+            logger.debug("Found existing source object, updating")
+            source.iobject_id = iobject_pk
+            source.top_level_iobject_id = top_level_iobj_pk
+            source.processing = processing_info
+            source.origin = origin_info
+        else:
+            logger.debug("Created new source object")
+
+
+        entities=[]
+
+        for node in result['relationship_info']['indicator_nodes']:
+            identifier_pk = node["identifier_pk"]
+            essence_info = node["name"]
+
+            entity = identifier_pk_2_related_entity_map.get(identifier_pk)
+            if not entity:
+                entity_type, created = EntityType.cached_objects.get_or_create(name=node['iobject_type'])
+                entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=identifier_pk,
+                                                                    non_iobject_identifier='',
+                                                                    defaults={'essence': essence_info,
+                                                                              'entity_type':entity_type})
+                identifier_pk_2_related_entity_map[identifier_pk] = entity
+
+
+            entities.append(entity)
+
+
+        source.related_stix_entities.clear()
+        source.related_stix_entities.add(*entities)
 
         tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
         if not source.tlp == tlp_color:
             source.tlp = tlp_color
             source.save()
 
-        if created:
+        if observable_created:
             logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
             new_status = createStatus(added_tags=[]) # TODO: pass source info
             status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
             status2x.save()
-
+        else:
             logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
 
     fact_pks = set(map(lambda x: x.get('fact.pk'), results))
