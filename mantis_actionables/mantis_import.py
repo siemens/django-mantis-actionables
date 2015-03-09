@@ -19,6 +19,9 @@
 
 import logging
 
+from json import dumps
+
+from dingos.graph_utils import dfs_preorder_nodes
 
 from datetime import timedelta
 
@@ -468,9 +471,9 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
     for (top_level_iobj_pk, results) in results_per_top_level_obj:
         #async_export_to_actionables(top_level_iobj_pk,results,action=action)
 
-        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user)
+        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user,graph=graph)
 
-def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=None,user=None):
+def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=None,user=None,graph=None):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -595,24 +598,46 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         entities=[]
 
-        for node in result['relationship_info']['indicator_nodes']:
-            identifier_pk = node["identifier_pk"]
-            essence_info = node["name"]
+        if not graph:
+            related_iobject_pks = map (lambda x: x['iobject'].pk, result['relationship_info'])
+            graph = follow_references(related_iobject_pks,
+                                      skip_terms = [],
+                                      direction='down'
+                                      )
 
-            entity = identifier_pk_2_related_entity_map.get(identifier_pk)
-            if not entity:
-                entity_type, created = EntityType.cached_objects.get_or_create(name=node['iobject_type'])
-                entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=identifier_pk,
-                                                                    non_iobject_identifier='',
-                                                                    defaults={'essence': essence_info,
-                                                                              'entity_type':entity_type})
-                identifier_pk_2_related_entity_map[identifier_pk] = entity
+        for node in result['_relationship_info']:
+            essence_info = extract_essence(node, graph)
+
+            if not essence_info:
+                essence_info = None
+            else:
+                essence_info = dumps(essence_info)
+
+            if essence_info:
+                node_identifier_pk = node['identifier_pk']
 
 
-            entities.append(entity)
+                entity = identifier_pk_2_related_entity_map.get(node_identifier_pk)
+
+                if not entity:
+                    entity_type, created = EntityType.cached_objects.get_or_create(name=node['iobject_type'])
+                    entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=node_identifier_pk,
+                                                                        non_iobject_identifier='',
+                                                                        defaults={'essence': essence_info,
+                                                                                  'entity_type':entity_type})
+                    if not created:
+                        entity.essence = essence_info
+                        entity.entity_type = entity_type
+                        entity.save()
+
+                    identifier_pk_2_related_entity_map[node_identifier_pk] = entity
+
+
+                entities.append(entity)
 
 
         source.related_stix_entities.clear()
+
         source.related_stix_entities.add(*entities)
 
         tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
@@ -673,3 +698,65 @@ def process_STIX_Reports(imported_since, imported_until=None):
                                                 create_timestamp__lte=imported_until)
     top_level_iobjs = list(top_level_iobjs.filter(query))
     return import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
+
+def extract_essence(node_info, graph):
+    result = {}
+    if node_info['iobject_type'] == 'Indicator':
+        confidence_facts = [ x.value for x in node_info['facts'] if x.term == 'Confidence/Value']
+
+        if confidence_facts:
+
+            result['confidence'] = confidence_facts[0]
+
+        kill_chain_phase_object_pks = list(dfs_preorder_nodes(graph,
+                                           source=node_info['iobject'].pk,
+                                           edge_pred= lambda x : 'phase_id' in x['attribute']))[1:]
+        kill_chain_phase_nodes = map(lambda x: graph.node[x],kill_chain_phase_object_pks)
+        print kill_chain_phase_nodes
+
+        for kill_chain_phase_node in kill_chain_phase_nodes:
+            kill_chain_phase_names = [ x.value for x in kill_chain_phase_node['facts'] if x.attribute == 'name']
+            if kill_chain_phase_names:
+                kill_chain_phases = result.setdefault('kill_chain_phases',set([]))
+                kill_chain_phases.update(kill_chain_phase_names)
+
+        if 'kill_chain_phases' in result:
+            result['kill_chain_phases'] = list(result['kill_chain_phases'])
+            result['kill_chain_phases'].sort()
+            result['kill_chain_phases'] = ';'.join(result['kill_chain_phases'])
+
+    elif node_info['iobject_type'] == "ThreatActor":
+        identity_object_pks = list(dfs_preorder_nodes(graph,
+                              source=node_info['iobject'].pk,
+                              edge_pred= lambda x : 'Identity' in x['term']))[1:]
+
+        identity_object_nodes = map(lambda x: graph.node[x],identity_object_pks)
+        for identity_object_node in identity_object_nodes:
+            identity_names = [ x.value for x in identity_object_node['facts'] if x.term == 'Name' and x.attribute == '']
+            if identity_names:
+                identities = result.setdefault('identities',set([]))
+                identities.update(identity_names)
+
+        if 'identities' in result:
+            result['identities'] = list(result['identities'])
+            result['identities'].sort()
+            result['identities'] = ';'.join(result['identities'])
+
+    elif node_info['iobject_type'] == "Campaign":
+        identity_names = [ x.value for x in node_info['facts'] if x.term == 'Names/Name' and x.attribute == '']
+        if identity_names:
+            identities = result.setdefault('names',set([]))
+            identities.update(identity_names)
+        if 'names' in result:
+            result['names'] = list(result['names'])
+            result['names'].sort()
+            result['names'] = ';'.join(result['names'])
+
+
+
+
+
+    return result
+
+
+

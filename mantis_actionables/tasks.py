@@ -32,12 +32,14 @@ logger = logging.getLogger(__name__)
 def async_export_to_actionables(top_level_iobj_identifier_pk,
                                 top_level_iobj_pk,
                                 export_results,
+                                graph=None,
                                 user=None):
     from mantis_actionables.mantis_import import import_singleton_observables_from_export_result
 
     import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
                                                     top_level_iobj_pk,
                                                     export_results,
+                                                    graph=None,
                                                     user=user)
 
 

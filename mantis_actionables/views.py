@@ -300,6 +300,7 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
                 ('value','Value','1'),
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'),
                 ('sources__related_stix_entities__essence','Context Info','0'),
+                ('sources__related_stix_entities__iobject_identifier_id','Context Info','0'),
                 ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
                 ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
 
@@ -366,6 +367,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
                 ('value','Value','1'),
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'),
                 ('sources__related_stix_entities__essence','Context Info','0'),
+                ('sources__related_stix_entities__iobject_identifier_id','Context Info','0'),
                 ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
                 ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
 

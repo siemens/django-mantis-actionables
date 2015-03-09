@@ -139,7 +139,7 @@ class STIX_Entity(models.Model):
 
 
     def __unicode__(self):
-        return self.essence
+        return "%s: %s" % (self.entity_type.name, self.essence)
 
     class Meta:
         unique_together = ('iobject_identifier','non_iobject_identifier')
