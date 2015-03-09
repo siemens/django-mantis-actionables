@@ -298,63 +298,12 @@ def update_and_transfer_tags(fact_pks,user=None):
 
             # We may have to update the status
 
-            try:
-                # There should already be a status associated with the
-                # singleton observable -- we extract that and
-                # call the update function
-
-                new_status = None
-                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                object_id=singleton.id,
-                                                active=True)
-
-                status = status2x.status
-                new_status,created = updateStatus(status=status,
-                                                  removed_tags = removed_tags,
-                                                  added_tags = added_tags)
-
-                logger.debug("Status %s found" % (status))
-                logger.debug("New status %s derived" % (new_status))
-
-
-            except ObjectDoesNotExist:
-                # This should not happen, but let's guard against it anyhow
-                logger.critical("No status found for existing singleton observable. "
-                                "I create one, but this should not happen!!!")
-                status = createStatus(added_tags=added_tags,removed_tags=removed_tags)
-                if not action:
-                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
-                status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=singleton)
-                status2x.save()
-                created = False
-            except MultipleObjectsReturned:
-                # This should not happen either, but let's guard against it
-                logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
-                status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                     object_id=singleton.id,
-                                                     active=True).order_by('-timestamp')
-                status2x = status2xes[0]
-
-                status2xes.update(active=False)
-
-                status2x.active=True
-                status2x.save()
-
-                status = status2x.status
-                new_status,created = updateStatus(status=status,
-                                                  removed_tags = removed_tags,
-                                                  added_tags = added_tags)
-
-
-            if created or (new_status and new_status.id != status.id):
-                logger.debug("Updating status")
-
-                status2x.active = False
-                status2x.save()
-                if not action:
-                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
-                status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=singleton)
-                status2x_new.save()
+            singleton.update_status(create_function=createStatus,
+                                    update_function=updateStatus,
+                                    action=action,
+                                    user=user,
+                                    added_tags=added_tags,
+                                    removed_tags=removed_tags)
 
         # Check if any of the added/removed dingos tag is matching the context pattern.
         # If it is, transfer the change into the set of actionable tags associated with
@@ -647,9 +596,9 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         if observable_created:
             logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-            new_status = createStatus(added_tags=[]) # TODO: pass source info
-            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-            status2x.save()
+            observable.create_status(create_function=createStatus,
+                                     action=action,
+                                     user=user)
         else:
             logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
 

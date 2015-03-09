@@ -24,6 +24,7 @@ from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes import generic
 from django.core.cache import caches
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 
 from datetime import datetime
 
@@ -378,6 +379,79 @@ class SingletonObservable(models.Model):
 
     def __unicode__(self):
         return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
+
+
+    def create_status(self,create_function,action=None,user=None,**kwargs):
+        if not action:
+            action,action_created = Action.objects.get_or_create(user=user,comment="Status create called.")
+        new_status = create_function(**kwargs)
+        status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=self)
+        status2x.save()
+
+
+    def update_status(self,create_function,update_function,action=None,user=None,**kwargs):
+        # The content type must be defined here: defining it outside the function
+        # leads to a circular import
+        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+        try:
+            # There should already be a status associated with the
+            # singleton observable -- we extract that and
+            # call the update function
+
+
+            new_status = None
+            status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                            object_id=self.id,
+                                            active=True)
+
+            status = status2x.status
+            new_status,created = update_function(status=status,
+                                                 **kwargs)
+
+            logger.debug("Status %s found" % (status))
+            logger.debug("New status %s derived" % (new_status))
+
+
+        except ObjectDoesNotExist:
+            # This should not happen, but let's guard against it anyhow
+            logger.critical("No status found for existing singleton observable. "
+                            "I create one, but this should not happen!!!")
+            status = create_function(**kwargs)
+            if not action:
+                action,action_created = Action.objects.get_or_create(user=user,comment="Status update called")
+            status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=self)
+            status2x.save()
+            created = False
+        except MultipleObjectsReturned:
+            # This should not happen either, but let's guard against it
+            logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
+            status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                 object_id=self.id,
+                                                 active=True).order_by('-timestamp')
+            status2x = status2xes[0]
+
+            status2xes.update(active=False)
+
+            status2x.active=True
+            status2x.save()
+
+            status = status2x.status
+            new_status,created = update_function(status=status,
+                                                 **kwargs)
+
+
+
+        if created or (new_status and new_status.id != status.id):
+            logger.debug("Updating status")
+
+            status2x.active = False
+            status2x.save()
+            if not action:
+                action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
+            status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=self)
+            status2x_new.save()
+
+
 
 class SignatureType(models.Model):
     name = models.CharField(max_length=255)
