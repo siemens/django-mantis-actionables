@@ -20,7 +20,7 @@ import django_filters
 
 from dingos.filter import ExtendedDateRangeFilter,create_order_keyword_list
 
-from .models import Context, SingletonObservable
+from .models import Context, SingletonObservable, ImportInfo
 
 
 
@@ -37,6 +37,27 @@ class ActionablesContextFilter(django_filters.FilterSet):
         order_by = create_order_keyword_list(['timestamp','name','title'])
         model = Context
         fields = ['name','title','timestamp']
+
+
+class ImportInfoFilter(django_filters.FilterSet):
+
+    identifier__uri = django_filters.CharFilter(lookup_type='icontains',
+                                                label='ID-Namespace contains')
+
+
+
+    name = django_filters.CharFilter(lookup_type='icontains',
+                                     label='Name contains')
+
+    timestamp = ExtendedDateRangeFilter(label="Source Creation Timestamp")
+
+    create_timestamp = ExtendedDateRangeFilter(label="Import Timestamp")
+
+    class Meta:
+        order_by = create_order_keyword_list(['timestamp','create_timestamp','name','title'])
+        model = ImportInfo
+        fields = ['name','identifier__uri','timestamp','create_timestamp']
+
 
 
 

@@ -25,7 +25,8 @@ from .views import SingletonObservablesWithSourceDataProvider, \
     ActionablesContextView, \
     ActionablesContextList, \
     ActionablesContextEditView, \
-    ActionablesTagHistoryView
+    ActionablesTagHistoryView,\
+    ImportInfoList
 
 
 urlpatterns = patterns(
@@ -42,6 +43,7 @@ urlpatterns = patterns(
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/?$', ActionablesContextView.as_view(), name='actionables_context_view'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/edit$', ActionablesContextEditView.as_view(), name='actionables_context_edit_view'),
     url(r'^context/?$', ActionablesContextList.as_view(), name='actionables_context_list'),
+    url(r'^import_info/?$', ImportInfoList.as_view(), name='import_info_list'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/history$', ActionablesTagHistoryView.as_view(), name='actionables_context_history_view'),
     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
 

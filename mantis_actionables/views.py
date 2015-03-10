@@ -38,7 +38,7 @@ from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status
-from .filter import ActionablesContextFilter, SingletonObservablesFilter
+from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
 
@@ -300,7 +300,6 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
                 ('value','Value','1'),
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'),
                 ('sources__related_stix_entities__essence','Context Info','0'),
-                ('sources__related_stix_entities__iobject_identifier_id','Context Info','0'),
                 ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
                 ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
 
@@ -318,7 +317,7 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
     def postprocess(self,table_name,res,q):
         for row in q:
             row = list(row)
-            row[0] = Source.TLP_COLOR_CSS[row[0]]
+            row[0] = Source.TLP_COLOR_CSS.get(row[0],'ERROR')
             #print row[1]
             #row[1] = datetime.datetime.date(row[1]).strftime('%Y-%m-%d %H:%M:%S %Z')
             #print "> %s" % row[1]
@@ -365,9 +364,9 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
                 ('type__name','Type','1'),
                 ('subtype__name','Subtype','1'),
                 ('value','Value','1'),
+                ('sources__pk','Source PK','0'),
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'),
                 ('sources__related_stix_entities__essence','Context Info','0'),
-                ('sources__related_stix_entities__iobject_identifier_id','Context Info','0'),
                 ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
                 ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
 
@@ -757,6 +756,18 @@ class ActionablesContextList(BasicFilterView):
     allow_save_search = False
 
     counting_paginator = True
+
+class ImportInfoList(BasicFilterView):
+    template_name = 'mantis_actionables/%s/ImportInfoList.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = "Import Overview"
+
+    filterset_class= ImportInfoFilter
+
+    allow_save_search = False
+
+    counting_paginator = True
+
 
 class ActionablesContextEditView(BasicUpdateView):
     template_name = 'mantis_actionables/%s/ContextEdit.html' % DINGOS_TEMPLATE_FAMILY

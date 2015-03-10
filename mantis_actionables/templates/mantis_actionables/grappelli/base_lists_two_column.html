@@ -1,0 +1,28 @@
+{% extends "dingos/grappelli/lists/base_lists_two_column.html" %}
+{% load staticfiles %}
+
+{% block extrahead %}
+    <script type="text/javascript" charset="utf-8">
+        (function ($) {
+            $(document).ready(function () {
+
+                (function ($) {
+                    $(document).ready(function () {
+                        $("#grp-content-container .grp-collapse").grp_collapsible();
+                    });
+                })(grp.jQuery);
+            });
+        })(grp.jQuery);
+    </script>
+    <script src="{% static 'dingos/js/d3.min.js' %}"></script>
+{% endblock %}
+
+{% block extrastyle %}
+    <link href="{% static 'mantis_actionables/css/mantis_actionables.css' %}" rel="stylesheet">
+{% endblock extrastyle%}
+{% block javascripts %}
+    {{ block.super }}
+    <script data-main="{% static 'mantis_actionables/js/' %}" src="{% static 'mantis_actionables/js/require.js' %}"></script>
+    <script src="{% static 'mantis_actionables/js/mantis_actionables.js' %}"></script>
+{% endblock javascripts %}
+

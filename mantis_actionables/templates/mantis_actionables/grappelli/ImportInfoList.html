@@ -1,0 +1,94 @@
+{% extends "dingos/grappelli/lists/base_lists_two_column.html" %}
+
+{% comment %}
+Copyright (c) Siemens AG, 2013
+
+This file is part of MANTIS.  MANTIS is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation; either version 2
+of the License, or(at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 51
+Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+{% endcomment %}
+
+{% load dingos_tags %}
+
+
+{% block objects %}
+
+
+
+    {% if object_list %}
+
+      <div class="grp-module grp-changelist-results">
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+                {% block header_row %}
+           	  <thead>
+                    <tr>
+                        <th scope="col"  class="sortable column-created">
+                            {% render_table_ordering "timestamp" "Import Timestamp" %}
+                        </th>
+                        <th scope="col"  class="sortable column-created">
+                            {% render_table_ordering "create_timestamp" "Create Timestamp" %}
+                        </th>
+                        <th>
+                            Source
+                        </th>
+                        <th>
+                            Identifier
+                        </th>
+                        <th/>
+                    </tr>
+		  </thead>
+                {% endblock %}
+
+
+                {% block rows %}
+                    <tbody>
+
+                    {% for obj in object_list %}
+                        <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+                            <td>
+                                {{obj.timestamp | date:"Y-m-d H:i:s O"}}
+                            </td>
+                            <td>
+                                {{obj.create_timestamp | date:"Y-m-d H:i:s O"}}
+                            </td>
+                            <td>{% show_namespace_image obj.namespace height='25' %}</td>
+                            <td>
+                                {{ obj.name }}
+                            </td>
+                            <td>
+
+                                {% url 'actionables_context_view' context_name=obj.name as the_view_url %}
+                                {% if the_view_url %}
+                                   <a class="grp-button" href="{{ the_view_url }} ">VIEW</a>
+                                {% endif %}
+
+
+                            </td>
+                        </tr>
+
+                    {% endfor %}
+                    </tbody>
+                {% endblock %}
+            </table>
+            {% if list_actions %}
+                <input type="hidden" name="type" value="InfoObject" />
+                </form>
+            {% endif %}
+        </div>
+  {%  endif %}
+
+
+
+{% endblock %}

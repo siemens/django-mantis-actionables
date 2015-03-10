@@ -1,3 +1,5 @@
+import logging
+
 import csv
 import datetime
 import ipaddr
@@ -5,10 +7,17 @@ import hashlib
 import json
 from django.db.models import Q
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
+
 
 from dingos.models import IdentifierNameSpace
 from mantis_actionables.models import Action, ImportInfo, SingletonObservable, SingletonObservableType,\
     SingletonObservableSubtype, Source, Status, EntityType, STIX_Entity
+
+logger = logging.getLogger(__name__)
+
+CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
+
 
 
 def import_crowdstrike_csv(csv_file, printing=False):
@@ -31,7 +40,7 @@ def import_crowdstrike_csv(csv_file, printing=False):
     latest_import_date = None
     latest_import_info = ImportInfo.objects\
         .filter(namespace=crowdstrike_namespace)\
-        .filter(Q(type=ImportInfo.TYPE_CROWDSTRIKE_ACTOR) | Q(type=ImportInfo.TYPE_CROWDSTRIKE_REPORT))\
+        .filter(Q(type=ImportInfo.TYPE_BULK_IMPORT))\
         .order_by('-create_timestamp')[0:1]
     if latest_import_info:
         latest_import_date = latest_import_info[0].create_timestamp.date()
@@ -43,6 +52,12 @@ def import_crowdstrike_csv(csv_file, printing=False):
     actor2entity_map = {}
     ta_entity_type, created = EntityType.cached_objects.get_or_create(name="ThreatActor")
 
+    generic_entity_type, created = EntityType.cached_objects.get_or_create(name="Generic")
+
+    domaintype2entity_map = {}
+
+
+
     for row, valid_row in read_crowdstrike_csv_generator(csv_file, printing):
         # invalid lines will be returned at the end, a line is invalid if the type is not in the whitelist
         if not valid_row:
@@ -52,7 +67,8 @@ def import_crowdstrike_csv(csv_file, printing=False):
         # skip rows older then latest_import
         if latest_import_date and row['date'] <= latest_import_date:
             lines_skipped += 1
-            continue
+            pass
+            #continue
 
         # type and subtype are just given as strings (empty string if not subtype is given)
         type, _ = SingletonObservableType.cached_objects.get_or_create(
@@ -83,19 +99,41 @@ def import_crowdstrike_csv(csv_file, printing=False):
                 status=status
             )
 
+        dt_entity = None
+        related_entities = []
+        if row.get('domaintype'):
+            domaintype = row.get('domaintype')
+            if not domaintype in ['None','Unknown']:
+                if not domaintype in domaintype2entity_map:
+                 dt_entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=None,
+                                                                       non_iobject_identifier='{crowdstrike.com}DomainType-%s' % domaintype,
+                                                                       defaults={'essence': json.dumps({'domaintype':domaintype}),
+                                                                       'entity_type':generic_entity_type})
+                domaintype2entity_map[domaintype] = dt_entity
+
+
+            dt_entity = domaintype2entity_map[domaintype]
+
+            related_entities.append(domaintype2entity_map[domaintype])
+
         # create import infos for actors and reports and then add sources
         import_infos = []
-        actor_entities = []
+
+
+
         for actor in row['actor']:
 
 
-            if not row['actor'] in actor2entity_map:
+            if not actor in actor2entity_map:
                 ta_entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=None,
-                                                                       non_iobject_identifier='{crowdstrike.com}ThreatActor-%s' % row['actor'],
-                                                                       defaults={'essence': json.dumps({'identities':row['actor']}),
+                                                                       non_iobject_identifier='{crowdstrike.com}ThreatActor-%s' % actor,
+                                                                       defaults={'essence': json.dumps({'identities':actor}),
                                                                        'entity_type':ta_entity_type})
-                actor2entity_map[row['actor']] = ta_entity
-            actor_entities.append(actor2entity_map[row['actor']])
+                actor2entity_map[actor] = ta_entity
+
+            ta_entity = actor2entity_map[actor]
+
+            related_entities.append(ta_entity)
 
             import_info = create_or_get_import_info(
                 actor,
@@ -103,13 +141,18 @@ def import_crowdstrike_csv(csv_file, printing=False):
                 row['date'],
                 crowdstrike_namespace,
                 action,
-                entities = [actor2entity_map[row['actor']]],
-                report_name = 'Crowdstrike indicators of %s associated with Threat Actor "%s"' % (row['date'],actor)
+                report_name = 'Crowdstrike indicators of %s associated with Threat Actor "%s"' % (row['date'],actor),
             )
 
-            import_info.related_stix_entities.add()
+
+            import_info.related_stix_entities.add(ta_entity)
+
+
+            if dt_entity:
+                import_info.related_stix_entities.add(dt_entity)
 
             import_infos.append(import_info)
+
 
         for report in row['report']:
             import_info = create_or_get_import_info(
@@ -122,48 +165,69 @@ def import_crowdstrike_csv(csv_file, printing=False):
             )
             import_infos.append(import_info)
 
+            if dt_entity:
+                import_info.related_stix_entities.add(dt_entity)
+
+
+
         # create a generic Source relation between the SingletonObservable and each ImportInfo obj
         for import_info in import_infos:
-            source = singleton_observable.sources.create(
+            source, source_created = Source.objects.get_or_create(
+                                                       object_id=singleton_observable.id,
+                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                       import_info = import_info,
+                                                       defaults = {
+                                                          'processing': Source.PROCESSED_MANUALLY,
+                                                          'origin': Source.TLP_AMBER,
+                                                       }
 
-                import_info=import_info,
-                origin=Source.ORIGIN_VENDOR,
-                processing=Source.PROCESSED_MANUALLY,
-                tlp=Source.TLP_AMBER
-            )
-            source.related_stix_entities.clear()
+                                                    )
+            source.related_stix_entities.add(*related_entities)
+            if not source_created:
+                logger.debug("Found existing source object")
+            else:
+                logger.debug("Created new source object")
 
-            source.related_stix_entities.add(*actor_entities)
+                print "Relatop %s" % import_info.related_stix_entities.all()
+
     return invalid_lines
 
 
 def create_or_get_import_info(referenced_name, import_info_type, create_date, namespace, action,entities=[],report_name=None):
-            uid = hashlib.sha512(
-                '%s_%s_%s_%s_%s' % (
-                    import_info_type,
-                    namespace.uri,
-                    create_date.strftime('%x'),
-                    referenced_name,
-                    settings.SECRET_KEY,  # use as salt
-                )
-            )
+    print referenced_name
+    print import_info_type
+    print create_date
+    print namespace
 
-            import_info, created = ImportInfo.objects.get_or_create(
-                uid=uid,
-                namespace=namespace,
-                defaults={
-                    'creating_action' : action,
-                    'create_timestamp': create_date,
-                    'type': import_info_type,
-                    'name': report_name,
-                    'description': 'Autogenerated via crowdstrike csv import',
-                }
-            )
+    print entities
+    uid = hashlib.sha256(
+        '%s_%s_%s_%s_%s' % (
+            import_info_type,
+            namespace.uri,
+            create_date.strftime('%x'),
+            referenced_name,
+            settings.SECRET_KEY,  # use as salt
+        )
+    ).hexdigest()
+
+    print "%s" % uid
+
+    import_info, created = ImportInfo.objects.get_or_create(
+        uid=uid,
+        namespace=namespace,
+        defaults={
+            'creating_action' : action,
+            'create_timestamp': create_date,
+            'type': import_info_type,
+            'name': report_name,
+            'description': 'Autogenerated via crowdstrike csv import',
+        }
+    )
 
 
-            if not created:
-                import_info.related_stix_entities.add(*entities)
-            return import_info
+    if created:
+        import_info.related_stix_entities.add(*entities)
+    return import_info
 
 
 def read_crowdstrike_csv_generator(csv_file, printing):
@@ -183,6 +247,7 @@ def read_crowdstrike_csv_generator(csv_file, printing):
             report - list of reports, seperated by |
             domaintype - string
             """
+            print row
 
             # print progress in procent
             current_procent = int(round(float(lines_processed) / lines_total * 100))

@@ -259,7 +259,7 @@ class Source(models.Model):
     yielded = generic.GenericForeignKey('content_type', 'object_id')
 
     class Meta:
-        unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','content_type','object_id')
+        unique_together = ('iobject_identifier','iobject_fact','iobject_factvalue','top_level_iobject_identifier','import_info','content_type','object_id')
 
 
 
