@@ -30,7 +30,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 
 from dingos import DINGOS_TEMPLATE_FAMILY
-from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView
+from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicListView
 from dingos.views import InfoObjectExportsView
 from dingos.models import IdentifierNameSpace
 from dingos.core.utilities import listify
@@ -618,7 +618,7 @@ def processActionablesTagging(data,**kwargs):
     return res
 
 
-class ActionablesContextView(BasicTemplateView):
+class ActionablesContextView(BasicListView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
 
     @property
@@ -628,6 +628,15 @@ class ActionablesContextView(BasicTemplateView):
     order_by_dict = {'type':'actionable_tag_thru__singleton_observables__type__name',
                      'subtype':'actionable_tag_thru__singleton_observables__subtype__name',
                      'value': 'actionable_tag_thru__singleton_observables__value'}
+
+
+    @property
+    def queryset(self):
+        tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
+                                        .filter(actionable_tag_thru__singleton_observables__isnull=False)\
+                                        .values_list('actionable_tag_thru__singleton_observables__id',flat=True)
+
+        return SingletonObservable.objects.filter(pk__in=tagged_object_pks)
 
 
 
