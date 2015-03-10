@@ -37,7 +37,7 @@ from dingos.core.utilities import listify
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status
 from .filter import ActionablesContextFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
@@ -408,9 +408,9 @@ class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
                 COLS_TO_DISPLAY.insert(index,content)
             fillColDict(cols_all,COLS_TO_DISPLAY)
 
-    #filter = [{
-    #    'status_thru__active' : True
-    #}]
+    filter = [{
+        'status_thru__active' : True
+    }]
     #select_related = ['status_thru__status']
 
 class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWithStatusDataProvider):
@@ -432,6 +432,11 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
 
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
+                ('status_thru__timestamp','Status Timestamp','0')  ,
+                ('status_thru__status__most_permissive_tlp','lightest TLP','0')  ,
+                ('status_thru__status__max_confidence','Max confidence','0'),
+                ('status_thru__status__best_processing','Processing','0'),
+                ('status_thru__status__kill_chain_phases','Kill Chain','0'),
                 ('type__name','Type','1'),
                 ('subtype__name','Subtype','1'),
                 ('value','Value','1'),
@@ -446,9 +451,19 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
                 COLS_TO_DISPLAY.insert(index,content)
             fillColDict(cols_all,COLS_TO_DISPLAY)
 
-    #filter = [{
-    #    'status_thru__active' : True
-    #}]
+    def postprocess(self,table_name,res,q):
+        for row in q:
+            row = list(row)
+            row[1] = Status.TLP_MAP[row[1]]
+            row[2] = Status.CONFIDENCE_MAP[row[2]]
+            row[3] = Status.PROCESSING_MAP[row[3]]
+
+            res['data'].append(row)
+
+
+    filter = [{
+        'status_thru__active' : True
+    }]
     #select_related = ['status_thru__status']
 
 

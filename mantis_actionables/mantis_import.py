@@ -36,9 +36,9 @@ from django.db.models import Q
 
 from dingos.models import InfoObject,Fact,TaggingHistory
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
-from dingos.graph_traversal import follow_references
+from dingos.graph_traversal import follow_references, annotate_graph
 
-from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
+from . import MANTIS_ACTIONABLES_ACTIVE_EXPORTERS, MANTIS_ACTIONABLES_STIX_REPORT_FAMILY_AND_TYPES, MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
 from .models import SingletonObservable,\
     SingletonObservableType, \
     SingletonObservableSubtype, \
@@ -49,7 +49,7 @@ from .models import SingletonObservable,\
     STIX_Entity, \
     EntityType
 
-from .status_management import createStatus, updateStatus
+from .status_management import updateStatus, createSourceMetaData
 
 from tasks import async_export_to_actionables
 
@@ -298,8 +298,7 @@ def update_and_transfer_tags(fact_pks,user=None):
 
             # We may have to update the status
 
-            singleton.update_status(create_function=createStatus,
-                                    update_function=updateStatus,
+            singleton.update_status(update_function=updateStatus,
                                     action=action,
                                     user=user,
                                     added_tags=added_tags,
@@ -394,7 +393,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
 
         results = []
 
-        for exporter in ACTIVE_MANTIS_EXPORTERS:
+        for exporter in MANTIS_ACTIONABLES_ACTIVE_EXPORTERS:
 
             postprocessor_classes = POSTPROCESSOR_REGISTRY[exporter]
 
@@ -479,9 +478,10 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
-    containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
 
-    select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
+    containing_iobj_pks = set(map(lambda x: x.get('_iobject_pk'), results))
+
+    select_columns = ['identifier_id','marking_thru__marking__fact_thru__fact__fact_values__value']
     color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
         .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
                 marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
@@ -510,8 +510,15 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
             logger.error("Incomplete actionable information %s/%s for value %s" % (type,subtype,value))
             continue
 
-        processing_info = Source.PROCESSING_UNKNOWN
-        origin_info = Source.ORIGIN_UNKNOWN
+        src_meta_data = createSourceMetaData(top_level_node=graph.node[top_level_iobj_pk])
+        if not src_meta_data:
+            src_meta_data = {}
+
+        origin_info = src_meta_data.get('origin',Source.ORIGIN_UNKNOWN)
+        processing_info = src_meta_data.get('processing',Source.PROCESSING_UNKNOWN)
+
+
+
 
         singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
         singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
@@ -548,11 +555,14 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         entities=[]
 
         if not graph:
-            related_iobject_pks = map (lambda x: x['iobject'].pk, result['relationship_info'])
+            print "NO GRAPH PASSED!!!"
+            related_iobject_pks = map (lambda x: x['iobject_pk'], result['_relationship_info'])
             graph = follow_references(related_iobject_pks,
                                       skip_terms = [],
                                       direction='down'
                                       )
+
+            annotate_graph(graph)
 
         for node in result['_relationship_info']:
             essence_info = extract_essence(node, graph)
@@ -589,6 +599,9 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         source.related_stix_entities.add(*entities)
 
+        print iobj2tlp_map
+
+
         tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
         if not source.tlp == tlp_color:
             source.tlp = tlp_color
@@ -596,11 +609,14 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         if observable_created:
             logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-            observable.create_status(create_function=createStatus,
-                                     action=action,
-                                     user=user)
+
         else:
-            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+            logger.info("Existing Singleton Observable (%s,%s,%s) found" % (type,subtype,value))
+        observable.update_status(update_function=updateStatus,
+                                 action=action,
+                                 user=user,
+                                 source_obj = source,
+                                 related_entities = entities)
 
     fact_pks = set(map(lambda x: x.get('fact.pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
@@ -632,7 +648,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     if not imported_until:
         imported_until = timezone.now()
     report_filters = []
-    for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
+    for report_filter in MANTIS_ACTIONABLES_STIX_REPORT_FAMILY_AND_TYPES:
         report_filters.append({
             'iobject_type__name' : report_filter['iobject_type'],
             'iobject_family__name' : report_filter['iobject_type_family']
@@ -680,8 +696,9 @@ def extract_essence(node_info, graph):
                               edge_pred= lambda x : 'Identity' in x['term']))[1:]
 
         identity_object_nodes = map(lambda x: graph.node[x],identity_object_pks)
+        #print identity_object_nodes
         for identity_object_node in identity_object_nodes:
-            identity_names = [ x.value for x in identity_object_node['facts'] if x.term == 'Name' and x.attribute == '']
+            identity_names = [x.value for x in identity_object_node['facts'] if x.term == 'Name' and x.attribute == '']
             if identity_names:
                 identities = result.setdefault('identities',set([]))
                 identities.update(identity_names)

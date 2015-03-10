@@ -44,5 +44,12 @@ def async_export_to_actionables(top_level_iobj_identifier_pk,
 
 
 @shared_task
+def async_tag_transfer_into_actionables(*args,**kwargs):
+    from mantis_actionables.mantis_import import update_and_transfer_tags
+
+    update_and_transfer_tags(*args,**kwargs)
+
+
+@shared_task
 def import_crowdstrike_csv(csv_file):
     crowdstrike.import_crowdstrike_csv(csv_file)

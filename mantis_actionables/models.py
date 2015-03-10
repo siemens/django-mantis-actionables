@@ -18,6 +18,7 @@
 #
 
 import logging
+import json
 
 from django.db import models
 from django.contrib.auth.models import User, Group
@@ -138,6 +139,9 @@ class STIX_Entity(models.Model):
 
     essence = models.TextField(blank=True)
 
+
+    def read_essence(self):
+        return json.loads(self.essence)
 
     def __unicode__(self):
         return "%s: %s" % (self.entity_type.name, self.essence)
@@ -307,6 +311,65 @@ class Status(models.Model):
                                                   "to derive a priority from the additional info provided"
                                                   "in the source information.")
 
+    TLP_UNKOWN = 0
+    TLP_WHITE = 40
+    TLP_GREEN = 30
+    TLP_AMBER = 20
+    TLP_RED = 10
+
+    TLP_KIND = ((TLP_UNKOWN,"Unknown"),
+                (TLP_WHITE,"White"),
+                (TLP_GREEN,"Green"),
+                (TLP_AMBER,"Amber"),
+                (TLP_RED,"Red"),
+    )
+
+    TLP_MAP = dict(TLP_KIND)
+
+    TLP_RMAP = dict(map(lambda x: (x[1].lower(),x[0]),TLP_KIND))
+
+    most_permissive_tlp = models.SmallIntegerField(choices=TLP_KIND,
+                                                   default=TLP_UNKOWN)
+
+    CONFIDENCE_UNKOWN = 0
+    CONFIDENCE_LOW = 10
+    CONFIDENCE_MEDIUM = 20
+    CONFIDENCE_HIGH = 30
+
+
+    CONFIDENCE_KIND = ((CONFIDENCE_UNKOWN,"Unknown"),
+                (CONFIDENCE_LOW,"Low"),
+                (CONFIDENCE_MEDIUM,"Medium"),
+                (CONFIDENCE_HIGH,"High"),
+    )
+
+    CONFIDENCE_MAP = dict(CONFIDENCE_KIND)
+    CONFIDENCE_RMAP = dict(map(lambda x: (x[1].lower(),x[0]),CONFIDENCE_KIND))
+
+    max_confidence = models.SmallIntegerField(choices=CONFIDENCE_KIND,
+                                             default=CONFIDENCE_UNKOWN)
+
+    #Field to store kill_chain_phases, seperated by ',', when Django 1.8 released replaced by ArrayField
+    #https://docs.djangoproject.com/en/dev/ref/contrib/postgres/fields
+    kill_chain_phases = models.TextField(blank=True,default='')
+
+
+    PROCESSING_UNKNOWN = 0
+    PROCESSED_AUTOMATICALLY = 10
+    PROCESSED_MANUALLY = 20
+
+    PROCESSING_KIND = ((PROCESSING_UNKNOWN, "Unknown"),
+                      (PROCESSED_AUTOMATICALLY, "Automated"),
+                      (PROCESSED_MANUALLY, "Manual"),
+    )
+
+    PROCESSING_MAP = dict(PROCESSING_KIND)
+    PROCESSING_RMAP = dict(map(lambda x: (x[1].lower(),x[0]),PROCESSING_KIND))
+
+    best_processing = models.SmallIntegerField(choices=PROCESSING_KIND,default=PROCESSING_UNKNOWN)
+
+
+
 
 class Status2X(models.Model):
 
@@ -381,15 +444,9 @@ class SingletonObservable(models.Model):
         return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
 
 
-    def create_status(self,create_function,action=None,user=None,**kwargs):
-        if not action:
-            action,action_created = Action.objects.get_or_create(user=user,comment="Status create called.")
-        new_status = create_function(**kwargs)
-        status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=self)
-        status2x.save()
 
 
-    def update_status(self,create_function,update_function,action=None,user=None,**kwargs):
+    def update_status(self,update_function,action=None,user=None,**kwargs):
         # The content type must be defined here: defining it outside the function
         # leads to a circular import
         CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -408,15 +465,16 @@ class SingletonObservable(models.Model):
             new_status,created = update_function(status=status,
                                                  **kwargs)
 
-            logger.debug("Status %s found" % (status))
-            logger.debug("New status %s derived" % (new_status))
+            if not created:
+                logger.debug("Status %s found" % (status))
+            else:
+                logger.debug("New status %s derived" % (new_status))
 
 
         except ObjectDoesNotExist:
             # This should not happen, but let's guard against it anyhow
-            logger.critical("No status found for existing singleton observable. "
-                            "I create one, but this should not happen!!!")
-            status = create_function(**kwargs)
+            logger.info("No status found, I create one.")
+            status, _ = update_function(None,**kwargs)
             if not action:
                 action,action_created = Action.objects.get_or_create(user=user,comment="Status update called")
             status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=self)
@@ -448,7 +506,7 @@ class SingletonObservable(models.Model):
             status2x.save()
             if not action:
                 action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
-            status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=self)
+            status2x_new  = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=self)
             status2x_new.save()
 
 
