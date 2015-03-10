@@ -33,12 +33,12 @@ from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicListView
 from dingos.views import InfoObjectExportsView
 from dingos.models import IdentifierNameSpace
-from dingos.core.utilities import listify
+from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import DASHBOARD_CONTENTS
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status
-from .filter import ActionablesContextFilter
+from .filter import ActionablesContextFilter, SingletonObservablesFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
 
@@ -618,8 +618,15 @@ def processActionablesTagging(data,**kwargs):
     return res
 
 
-class ActionablesContextView(BasicListView):
+class ActionablesContextView(BasicFilterView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    filterset_class= SingletonObservablesFilter
+
+    allow_save_search = False
+
+    counting_paginator = True
 
     @property
     def title(self):
@@ -630,55 +637,47 @@ class ActionablesContextView(BasicListView):
                      'value': 'actionable_tag_thru__singleton_observables__value'}
 
 
+    object2tag_map = {}
+
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+            print "Calculating map"
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == self.curr_context_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+            print self.object2tag_map
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+
     @property
     def queryset(self):
         tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
                                         .filter(actionable_tag_thru__singleton_observables__isnull=False)\
                                         .values_list('actionable_tag_thru__singleton_observables__id',flat=True)
 
-        return SingletonObservable.objects.filter(pk__in=tagged_object_pks)
+        return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
+                                                                                           'actionable_tags__actionable_tag__context',
+                                                                                           'actionable_tags__actionable_tag__tag').\
+            prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace')
 
 
 
     def get_context_data(self, **kwargs):
 
+        # recalculate tag map
+        self.object2tags(None)
 
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
 
-        # TODO: Below, the tagged singleton observables are extracted
-        # via the Actionable tag. It would be more natural to
-        # query via SingletonObservable and aggregate the tags...
-
-        cols = ['tag__name',\
-                'actionable_tag_thru__singleton_observables__type__name',\
-                'actionable_tag_thru__singleton_observables__subtype__name',\
-                'actionable_tag_thru__singleton_observables__value',\
-                'actionable_tag_thru__singleton_observables__id']
-
-        matching_observables = ActionableTag.objects.filter(context__name=self.curr_context_name)\
-                                        .filter(actionable_tag_thru__singleton_observables__isnull=False)\
-                                        .values_list(*cols)
-
-        action_tags = ActionableTag.objects.filter(context__name=self.curr_context_name)
-
-        # TODO: This does not work because the order is thrown away below when
-        # aggregating the tags.
-
-        if self.order_by:
-            matching_observables.order_by(self.order_by)
-
-
-        obs_tag_map = {}
-        for observable in matching_observables:
-            obs = obs_tag_map.setdefault((observable[1],observable[2],observable[3],observable[4]),[])
-            obs.append(observable[0])
-
 
         context['isEditable'] = True
-        context['obs_tag_map'] = obs_tag_map
-
-        # TODO: Displaying buttons in this widget is a hack: we need
-        # a proper menu system with a context-specific menu display
 
         context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_history']}
         return context

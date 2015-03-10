@@ -1,15 +1,11 @@
-{% extends "mantis_actionables/grappelli/base.html" %}
+{% extends "mantis_actionables/grappelli/base_lists_two_column.html" %}
 {% load actionables_tags %}
 {% load dingos_tags %}
 
 {% load tagging_widgets %}
 
-{% block content %}
+{% block left_column %}
 
-
-
-
-  <div class="c-2">
 
       {% show_ContextMetaData context_obj=view.curr_context_object widget_config=ContextMetaDataWidgetConfig %}
 
@@ -19,16 +15,21 @@
 
       <div class="grp-module grp-changelist-results">
 
+        {% if is_paginated %}
+                    {%  render_paginator  %}
+                {% endif %}
+
+
         <table id="result_list" cellspacing="0" class="grp-sortable">
 
         <thead>
          <tr>
            <th scope="col"  class="sortable column-identifier">
-               {% render_table_ordering "type" "Type" %}
+               {% render_table_ordering "type__name" "Type" %}
 
            </th>
            <th scope="col"  class="sortable column-identifier">
-               {% render_table_ordering "subtype" "Subtype" %}
+               {% render_table_ordering "subtype__name" "Subtype" %}
 
            </th>
            <th scope="col"  class="sortable column-identifier">
@@ -46,7 +47,8 @@
            <td class="w-1 nowrap middle">{{ object.value }}</td>
            <td class="middle">
             <div id="tags" class="tag-block" data-obj-id="{{ object.pk }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
-            {% if False %}
+            {% view_apply 'object2tags' object as tags%}
+            {% if tags %}
               {% show_TagDisplay tags 'actionables' isEditable tag_context=view.curr_context_name%}
             {% endif %}
             </div>
@@ -54,64 +56,37 @@
               {% show_addTagInput_actionables object.pk view.curr_context_name %}
           {% endif %}
           </td>
-         </tr>
+         {% for source in object.sources.all %}
+           <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+            <td></td>
+               <td></td>
+               <td></td>
+            <td colspan="1" class="w-1 nowrap middle">
+                <a href="{%url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk %}">
+                    {% show_namespace_image source.top_level_iobject_identifier.namespace height='25' %} '{{ source.top_level_iobject_identifier.latest.name }}'</a>
+
+            </td>
+
+           </tr>
+         {% endfor %}
          {% endfor %}
         </tbody>
        </table>
+        {% if is_paginated %}
+                    {%  render_paginator  %}
+                {% endif %}
+
+
+
     </div>
    </div>
 
-     <div class="grp-module grp-collapse grp-open">
-      <h2 class="grp-collapse-handler">Singleton Observables tagged with "{{ view.curr_context_name }}"</h2>
-
-      <div class="grp-module grp-changelist-results">
-
-        <table id="result_list" cellspacing="0" class="grp-sortable">
-
-        <thead>
-         <tr>
-           <th scope="col"  class="sortable column-identifier">
-               {% render_table_ordering "type" "Type" %}
-
-           </th>
-           <th scope="col"  class="sortable column-identifier">
-               {% render_table_ordering "subtype" "Subtype" %}
-
-           </th>
-           <th scope="col"  class="sortable column-identifier">
-               {% render_table_ordering "value" "Value" %}
-
-           </th>
-           <th class="middle">Tags</th>
-         </tr>
-         </thead>
-        <tbody>
-         {% for obs_info,tags in obs_tag_map.items %}
-         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
-           <td class="w-1 nowrap middle">{{ obs_info.0 }}</td>
-           <td class="w-1 nowrap middle">{{ obs_info.1 }}</td>
-           <td class="w-1 nowrap middle">{{ obs_info.2 }}</td>
-           <td class="middle">
-            <div id="tags" class="tag-block" data-obj-id="{{ obs_info.3 }}" style="float: left;" data-curr-context="{{ view.curr_context_name }}">
-            {% if tags %}
-              {% show_TagDisplay tags 'actionables' isEditable tag_context=view.curr_context_name%}
-            {% endif %}
-            </div>
-          {% if isEditable %}
-              {% show_addTagInput_actionables obs_info.3 view.curr_context_name %}
-          {% endif %}
-          </td>
-         </tr>
-         {% endfor %}
-        </tbody>
-       </table>
-    </div>
+    {% show_TaggedThings tag=view.curr_context_name  %}
 
 
-  </div>
 
-        {% show_TaggedThings tag=view.curr_context_name  %}
-  </div>
+
+
 {% include 'autocomplete_light/static.html' %}
 {% include "dingos/grappelli/includes/_TaggingDialogs.html" %}
 {% endblock %}

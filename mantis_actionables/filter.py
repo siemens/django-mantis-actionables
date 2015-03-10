@@ -20,7 +20,9 @@ import django_filters
 
 from dingos.filter import ExtendedDateRangeFilter,create_order_keyword_list
 
-from .models import Context
+from .models import Context, SingletonObservable
+
+
 
 class ActionablesContextFilter(django_filters.FilterSet):
 
@@ -37,5 +39,19 @@ class ActionablesContextFilter(django_filters.FilterSet):
         fields = ['name','title','timestamp']
 
 
+
+class SingletonObservablesFilter(django_filters.FilterSet):
+
+    type__name = django_filters.CharFilter(lookup_type='icontains',
+                                     label='Type contains')
+    subtype__name = django_filters.CharFilter(lookup_type='icontains',
+                                              label='Subtype')
+    value = django_filters.CharFilter(lookup_type='icontains',
+                                              label='Value contains')
+
+    class Meta:
+        order_by = create_order_keyword_list(['type__name','subtype__name','value'])
+        model = SingletonObservable
+        fields = ['type__name','subtype__name','value']
 
 
