@@ -559,12 +559,10 @@ class ImportInfo(models.Model):
 
     # type crowdstrike actor/report
     TYPE_UNKOWN = 0
-    TYPE_CROWDSTRIKE_ACTOR = 10
-    TYPE_CROWDSTRIKE_REPORT = 20
+    TYPE_BULK_IMPORT = 10
     TYPE_CHOICES = [
         (TYPE_UNKOWN, "Unknown"),
-        (TYPE_CROWDSTRIKE_ACTOR, "Crowdstrike Actor"),
-        (TYPE_CROWDSTRIKE_REPORT, "Crowdstrike Report"),
+        (TYPE_BULK_IMPORT, "Bulk Import"),
     ]
     type = models.SmallIntegerField(choices=TYPE_CHOICES, default=TYPE_UNKOWN)
 
@@ -572,8 +570,8 @@ class ImportInfo(models.Model):
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
-    related_threatactor = models.CharField(max_length=255,
-                                           blank=True)
+
+    related_stix_entities = models.ManyToManyField(STIX_Entity)
 
     class Meta:
         unique_together = ('uid', 'namespace')

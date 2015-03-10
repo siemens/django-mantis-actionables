@@ -555,7 +555,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         entities=[]
 
         if not graph:
-            print "NO GRAPH PASSED!!!"
+
             related_iobject_pks = map (lambda x: x['iobject_pk'], result['_relationship_info'])
             graph = follow_references(related_iobject_pks,
                                       skip_terms = [],
@@ -599,7 +599,6 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         source.related_stix_entities.add(*entities)
 
-        print iobj2tlp_map
 
 
         tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
