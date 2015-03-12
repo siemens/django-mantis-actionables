@@ -473,6 +473,15 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
     # Mapping from identifier_pks to related_entities
 
+    if not graph:
+        graph = follow_references([top_level_iobj_pk],
+                                  skip_terms = [],
+                                  direction='down'
+                                  )
+
+        annotate_graph(graph)
+
+
     identifier_pk_2_related_entity_map = {}
 
     if not action:
@@ -554,15 +563,6 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         entities=[]
 
-        if not graph:
-
-            related_iobject_pks = map (lambda x: x['iobject_pk'], result['_relationship_info'])
-            graph = follow_references(related_iobject_pks,
-                                      skip_terms = [],
-                                      direction='down'
-                                      )
-
-            annotate_graph(graph)
 
         for node in result['_relationship_info']:
             essence_info = extract_essence(node, graph)
@@ -615,7 +615,8 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
                                  action=action,
                                  user=user,
                                  source_obj = source,
-                                 related_entities = entities)
+                                 related_entities = entities,
+                                 graph=graph)
 
     fact_pks = set(map(lambda x: x.get('fact.pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
@@ -676,7 +677,7 @@ def extract_essence(node_info, graph):
                                            source=node_info['iobject'].pk,
                                            edge_pred= lambda x : 'phase_id' in x['attribute']))[1:]
         kill_chain_phase_nodes = map(lambda x: graph.node[x],kill_chain_phase_object_pks)
-        print kill_chain_phase_nodes
+
 
         for kill_chain_phase_node in kill_chain_phase_nodes:
             kill_chain_phase_names = [ x.value for x in kill_chain_phase_node['facts'] if x.attribute == 'name']

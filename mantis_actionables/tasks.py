@@ -39,7 +39,7 @@ def async_export_to_actionables(top_level_iobj_identifier_pk,
     import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
                                                     top_level_iobj_pk,
                                                     export_results,
-                                                    graph=None,
+                                                    graph=graph,
                                                     user=user)
 
 

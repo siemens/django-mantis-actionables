@@ -8,7 +8,7 @@ import json
 from django.db.models import Q
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-
+from mantis_actionables.status_management import updateStatus
 
 from dingos.models import IdentifierNameSpace
 from mantis_actionables.models import Action, ImportInfo, SingletonObservable, SingletonObservableType,\
@@ -85,6 +85,7 @@ def import_crowdstrike_csv(csv_file, printing=False):
             value=row['indicator']
         )
 
+
         # if the singleton observable is new, add a status
         if created:
             lines_added += 1
@@ -101,20 +102,22 @@ def import_crowdstrike_csv(csv_file, printing=False):
 
         dt_entity = None
         related_entities = []
+
         if row.get('domaintype'):
             domaintype = row.get('domaintype')
             if not domaintype in ['None','Unknown']:
                 if not domaintype in domaintype2entity_map:
-                 dt_entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=None,
+                    dt_entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=None,
                                                                        non_iobject_identifier='{crowdstrike.com}DomainType-%s' % domaintype,
                                                                        defaults={'essence': json.dumps({'domaintype':domaintype}),
                                                                        'entity_type':generic_entity_type})
-                domaintype2entity_map[domaintype] = dt_entity
+                    domaintype2entity_map[domaintype] = dt_entity
 
 
-            dt_entity = domaintype2entity_map[domaintype]
+                dt_entity = domaintype2entity_map[domaintype]
 
-            related_entities.append(domaintype2entity_map[domaintype])
+                related_entities.append(domaintype2entity_map[domaintype])
+
 
         # create import infos for actors and reports and then add sources
         import_infos = []
@@ -134,6 +137,7 @@ def import_crowdstrike_csv(csv_file, printing=False):
             ta_entity = actor2entity_map[actor]
 
             related_entities.append(ta_entity)
+
 
             import_info = create_or_get_import_info(
                 actor,
@@ -178,28 +182,32 @@ def import_crowdstrike_csv(csv_file, printing=False):
                                                        import_info = import_info,
                                                        defaults = {
                                                           'processing': Source.PROCESSED_MANUALLY,
-                                                          'origin': Source.TLP_AMBER,
+                                                          'origin': Source.ORIGIN_PARTNER,
+                                                          'tlp': Source.TLP_AMBER
                                                        }
 
                                                     )
-            source.related_stix_entities.add(*related_entities)
+            if related_entities:
+                source.related_stix_entities.add(*related_entities)
+
+            singleton_observable.update_status(update_function=updateStatus,
+                                               action=action,
+                                               user=None,
+                                               source_obj = source,
+                                               related_entities = related_entities,
+                                               import_info_obj = import_info)
+
             if not source_created:
                 logger.debug("Found existing source object")
             else:
                 logger.debug("Created new source object")
 
-                print "Relatop %s" % import_info.related_stix_entities.all()
 
     return invalid_lines
 
 
 def create_or_get_import_info(referenced_name, import_info_type, create_date, namespace, action,entities=[],report_name=None):
-    print referenced_name
-    print import_info_type
-    print create_date
-    print namespace
 
-    print entities
     uid = hashlib.sha256(
         '%s_%s_%s_%s_%s' % (
             import_info_type,
@@ -210,7 +218,6 @@ def create_or_get_import_info(referenced_name, import_info_type, create_date, na
         )
     ).hexdigest()
 
-    print "%s" % uid
 
     import_info, created = ImportInfo.objects.get_or_create(
         uid=uid,
@@ -247,7 +254,7 @@ def read_crowdstrike_csv_generator(csv_file, printing):
             report - list of reports, seperated by |
             domaintype - string
             """
-            print row
+
 
             # print progress in procent
             current_procent = int(round(float(lines_processed) / lines_total * 100))
@@ -286,6 +293,7 @@ def read_crowdstrike_csv_generator(csv_file, printing):
                 'domain',
                 'email_address',
                 'email_subject',
+                'event_name',
                 'file_mapping',
                 'file_name',
                 'file_path',
@@ -295,8 +303,8 @@ def read_crowdstrike_csv_generator(csv_file, printing):
                 'ip_address',
                 'ip_address_block',
                 'mutex_name',
-                #'password',
-                #'persona_name',
+                'password',
+                'persona_name',
                 'registry',
                 'service_name',
                 'url',
@@ -311,6 +319,7 @@ def read_crowdstrike_csv_generator(csv_file, printing):
             # row is invalid because type is unkown
             if not row['type'] in types_whitelist:
                 yield row, False
+                continue
 
             # types which may have a subtype in mantis
             if row['type'] == 'hash_md5':
@@ -360,7 +369,10 @@ def read_crowdstrike_csv_generator(csv_file, printing):
                 'email_address': 'Email_Address',
                 'email_subject': 'Email_Subject',
                 'user_agent': 'User_Agent',
-                'binary_sting': 'Binary_String',
+                'binary_string': 'Binary_String',
+                'persona_name': 'Persona_Name',
+                'event_name': 'Event_Name',
+                'password': 'Password',
                 'file_mapping': 'File_Mapping',
                 'mutex_name' : 'Mutex_Name',
                 'service_name': 'Service_Name',

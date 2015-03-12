@@ -46,6 +46,7 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
                         <th>
                             Identifier
                         </th>
+                        <th>Tags</th>
                         <th/>
                     </tr>
 		  </thead>
@@ -67,9 +68,19 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
                             <td>
                                 {{ obj.name }}
                             </td>
+                                  <td class="middle">
+            <div id="tags" class="tag-block" data-obj-id="{{ obj.pk }}" style="float: left;" data-curr-context="">
+            {% view_apply 'object2tags' obj as tags%}
+            {% if tags %}
+                {%  for tag in tags %}
+                {% show_TagDisplay tag 'actionables' False tag_context=tag%}
+                {% endfor %}
+            {% endif %}
+            </div>
+          </td>
                             <td>
 
-                                {% url 'actionables_context_view' context_name=obj.name as the_view_url %}
+                                {% url 'actionables_import_info_details' pk=obj.pk as the_view_url %}
                                 {% if the_view_url %}
                                    <a class="grp-button" href="{{ the_view_url }} ">VIEW</a>
                                 {% endif %}

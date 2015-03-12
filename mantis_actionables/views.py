@@ -29,18 +29,22 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 
+from django.contrib import messages
+
 from dingos import DINGOS_TEMPLATE_FAMILY
-from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicListView
+from dingos.forms import InvestigationForm
+from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
 from dingos.views import InfoObjectExportsView
 from dingos.models import IdentifierNameSpace
 from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
-from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status
+from . import MANTIS_ACTIONABLES_DASHBOARD_CONTENTS
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
+from .forms import ContextEditForm
 
 
 #content_type_id
@@ -74,7 +78,7 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
         pass
 
     if not table_spec:
-        table_spec = DASHBOARD_CONTENTS[table_name]
+        table_spec = MANTIS_ACTIONABLES_DASHBOARD_CONTENTS[table_name]
 
     cols = kwargs.pop('cols')
 
@@ -198,7 +202,7 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
         params.append(length)
         params.append(start)
 
-
+    #return (q,-1,-1)
     return (q,q_count_all,q_count_filtered)
 
 
@@ -238,7 +242,8 @@ class BasicTableDataProvider(BasicJSONView):
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
-
+        if not POST:
+            POST = self.request.GET.copy()
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {
             'draw': draw_val,
@@ -259,7 +264,7 @@ class BasicTableDataProvider(BasicJSONView):
         table_name = POST.get('table_type').replace(' ','_')
 
         kwargs =  {}
-        if table_name in DASHBOARD_CONTENTS.keys():
+        if table_name in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.keys():
             # Build the query for the data, and fetch that stuff
             kwargs = {
                 'cols' : self.get_curr_cols(),
@@ -433,6 +438,7 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
             COLS_TO_DISPLAY = [
                 ('status_thru__timestamp','Status Timestamp','0')  ,
                 ('status_thru__status__most_permissive_tlp','lightest TLP','0')  ,
+                ('status_thru__status__most_restrictive_tlp','darkest TLP','0')  ,
                 ('status_thru__status__max_confidence','Max confidence','0'),
                 ('status_thru__status__best_processing','Processing','0'),
                 ('status_thru__status__kill_chain_phases','Kill Chain','0'),
@@ -454,8 +460,9 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
         for row in q:
             row = list(row)
             row[1] = Status.TLP_MAP[row[1]]
-            row[2] = Status.CONFIDENCE_MAP[row[2]]
-            row[3] = Status.PROCESSING_MAP[row[3]]
+            row[2] = Status.TLP_MAP[row[2]]
+            row[3] = Status.CONFIDENCE_MAP[row[3]]
+            row[4] = Status.PROCESSING_MAP[row[4]]
 
             res['data'].append(row)
 
@@ -506,7 +513,7 @@ def imports(request):
         'view' : name
     }
 
-    for id,table_info in DASHBOARD_CONTENTS.items():
+    for id,table_info in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.items():
         if not table_info['show_type_column']:
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
@@ -523,7 +530,7 @@ def status_infos(request):
         'view' : name
     }
 
-    for id,table_info in DASHBOARD_CONTENTS.items():
+    for id,table_info in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.items():
         if not table_info['show_type_column']:
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
@@ -641,13 +648,17 @@ class ActionablesContextView(BasicFilterView):
 
     def object2tags(self,object):
         if not self.object2tag_map or not object:
-            print "Calculating map"
+
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
                                                      'actionable_tags__actionable_tag__tag__name')
+            print tag_infos
+            print self.object_list
+
             for pk,context_name,tag_name in tag_infos:
                 if context_name == self.curr_context_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk)
+
             print self.object2tag_map
 
         if object:
@@ -658,8 +669,10 @@ class ActionablesContextView(BasicFilterView):
     @property
     def queryset(self):
         tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
-                                        .filter(actionable_tag_thru__singleton_observables__isnull=False)\
-                                        .values_list('actionable_tag_thru__singleton_observables__id',flat=True)
+                                         .filter(actionable_tag_thru__content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)\
+                                        .values_list('actionable_tag_thru__object_id',flat=True)
+
+
 
         return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
                                                                                            'actionable_tags__actionable_tag__context',
@@ -710,8 +723,10 @@ class ActionablesTagHistoryView(BasicTemplateView):
         cols_history = ['tag__tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
         sel_rel = ['tag','user','content_type']
         history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
+                         filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
                          filter(tag__context__name=self.tag_context).order_by('-timestamp').\
                          values(*cols_history))
+        print history_q
 
         obj_info_mapping = {}
         for model,cols in self.possible_models.items():
@@ -768,17 +783,145 @@ class ImportInfoList(BasicFilterView):
 
     counting_paginator = True
 
+    object2tag_map = {}
 
-class ActionablesContextEditView(BasicUpdateView):
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+
+class ImportInfoDetailsView(BasicFilterView):
+    template_name = 'mantis_actionables/%s/ImportInfoDetails.html' % DINGOS_TEMPLATE_FAMILY
+
+    filterset_class = SingletonObservablesFilter
+
+    @property
+    def object(self):
+        return ImportInfo.objects.get(pk=self.kwargs.get('pk'))
+
+    @property
+    def queryset(self):
+        return SingletonObservable.objects.filter(sources__import_info_id=self.kwargs.get('pk'))
+
+    def title(self):
+
+        return "%s" % self.object.name
+
+    # TODO Pagination does not correctly here???
+    paginate_by = 0
+
+    object2tag_map = {}
+
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+    def post(self, request, *args, **kwargs):
+        self.form = InvestigationForm(request.POST.dict())
+        form_valid = self.form.is_valid()
+        cleaned_data = self.form.cleaned_data
+        if form_valid:
+            context_name = cleaned_data.get('investigation_tag')
+            ActionableTag.bulk_action(action="add",
+                                      context_name_pairs=[(context_name,context_name)],
+                                      thing_to_tag_pks= map(lambda x:x.pk,self.queryset),
+                                      user=request.user,
+                                      comment = "Investigation initiated on report '%s'" % self.object.name)
+            ActionableTag.bulk_action(action="add",
+                                      context_name_pairs=[(context_name,context_name)],
+                                      thing_to_tag_pks= [self.object.pk],
+                                      thing_to_tag_model= ImportInfo,
+                                      user=request.user,
+                                      comment = "Investigation initiated on report '%s'" % self.object.name)
+            messages.success(request,"Investigation tag has been added to all indicators in this report.")
+        else:
+            messages.error(request,"Please chose a valid investigation tag.")
+        return super(ImportInfoDetailsView, self).get(request, *args, **kwargs)
+
+
+class ActionablesContextEditView(BasicDetailView):
     template_name = 'mantis_actionables/%s/ContextEdit.html' % DINGOS_TEMPLATE_FAMILY
     model = Context
     fields = ['title','description']
+
+    form = None
 
     def get_context_data(self, **kwargs):
 
         context = super(ActionablesContextEditView, self).get_context_data(**kwargs)
         context['title'] = "Edit context: %s" % self.object.name
+
+        if not self.form:
+            self.form = ContextEditForm(current_type = self.object.type,
+                                        current_name = self.object.name)
+
+        context['form'] = self.form
+
         return context
+
+
+    #def get(self, request, *args, **kwargs):
+    #    return super(ActionablesContextEditView, self).get(request, *args, **kwargs)
+
+
+    def post(self, request, *args, **kwargs):
+        super(ActionablesContextEditView,self).get(request, *args, **kwargs)
+        self.form = ContextEditForm(request.POST.dict(),
+                                    current_type = self.object.type,
+                                    current_name = self.object.name)
+        if self.form.is_valid():
+            cleaned_data = self.form.cleaned_data
+            type = int(cleaned_data['type'])
+
+            self.object.title = cleaned_data['title']
+            self.object.description = cleaned_data['description']
+
+
+            if type != self.object.type:
+                messages.info(request,"Now I would change the type and rename to %s" % cleaned_data['new_context_name'])
+                #existing_contexts = Context.objects.filter(name=new_context_name).update(name=)
+                #existing_actionable_tags = ActionableTag.objects.filter(context__name=new_context_name)
+                #existing_dingos_tags = Tag.objects.filter(name=new_context_name)
+
+            else:
+                messages.info(request,"Type stays the same")
+
+            self.object.save()
+        else:
+            messages.error(request,"Please enter valid information.")
+
+
+        return super(ActionablesContextEditView, self).get(request, *args, **kwargs)
+
+
+
+
+
+
 
     def get_object(self):
         return Context.objects.get(name=self.kwargs['context_name'])

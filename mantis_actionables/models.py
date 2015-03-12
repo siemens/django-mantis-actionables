@@ -35,6 +35,9 @@ from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace, Iden
 
 logger = logging.getLogger(__name__)
 
+import read_settings
+
+
 class CachingManager(models.Manager):
     """
     For models that have a moderate amount of entries and are always queried
@@ -200,7 +203,7 @@ class Source(models.Model):
     ORIGIN_PARTNER = 30
     ORIGIN_INTERNAL = 40
 
-    ORIGIN_KIND = ((ORIGIN_UNKNOWN, "Origin not external"),
+    ORIGIN_KIND = ((ORIGIN_UNKNOWN, "Origin unknown"),
                    (ORIGIN_EXTERNAL, "Origin external, but provenance uncertain"),
                    (ORIGIN_PUBLIC, "Origin public"),
                    (ORIGIN_VENDOR, "Provided by vendor"),
@@ -235,6 +238,10 @@ class Source(models.Model):
                 (TLP_AMBER,"Amber"),
                 (TLP_RED,"Red"),
     )
+
+    TLP_MAP = dict(TLP_KIND)
+
+    TLP_RMAP = dict(map(lambda x: (x[1].lower(),x[0]),TLP_KIND))
 
     TLP_COLOR_CSS = {
         TLP_UNKOWN : "gray",
@@ -330,6 +337,11 @@ class Status(models.Model):
 
     most_permissive_tlp = models.SmallIntegerField(choices=TLP_KIND,
                                                    default=TLP_UNKOWN)
+
+    most_restrictive_tlp = models.SmallIntegerField(choices=TLP_KIND,
+                                                    default=TLP_UNKOWN)
+
+
 
     CONFIDENCE_UNKOWN = 0
     CONFIDENCE_LOW = 10
@@ -462,6 +474,7 @@ class SingletonObservable(models.Model):
                                             active=True)
 
             status = status2x.status
+
             new_status,created = update_function(status=status,
                                                  **kwargs)
 
@@ -474,7 +487,7 @@ class SingletonObservable(models.Model):
         except ObjectDoesNotExist:
             # This should not happen, but let's guard against it anyhow
             logger.info("No status found, I create one.")
-            status, _ = update_function(None,**kwargs)
+            status, _ = update_function(status=None,**kwargs)
             if not action:
                 action,action_created = Action.objects.get_or_create(user=user,comment="Status update called")
             status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=self)
@@ -494,6 +507,7 @@ class SingletonObservable(models.Model):
             status2x.save()
 
             status = status2x.status
+
             new_status,created = update_function(status=status,
                                                  **kwargs)
 
@@ -570,6 +584,7 @@ class ImportInfo(models.Model):
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
+    actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
 
     related_stix_entities = models.ManyToManyField(STIX_Entity)
 
@@ -582,6 +597,20 @@ class Context(models.Model):
     title = models.CharField(max_length=256,blank=True,default='')
     description = models.TextField(blank=True,default='')
     timestamp = models.DateTimeField(auto_now_add=True)
+    related_incident_id = models.SlugField(max_length=40,blank=True)
+
+    # type crowdstrike actor/report
+    TYPE_INVESTIGATION = 10
+    TYPE_INCIDENT= 20
+    TYPE_CHOICES = [
+        (TYPE_INVESTIGATION, "INVES"),
+        (TYPE_INCIDENT, "IR"),
+    ]
+
+    TYPE_MAP = dict(TYPE_CHOICES)
+
+    type = models.SmallIntegerField(choices=TYPE_CHOICES, default=TYPE_INVESTIGATION)
+
 
     objects = models.Manager()
     cached_objects = CachingManager()
@@ -618,7 +647,7 @@ class ActionableTag(models.Model):
                     # TODO: once we want to generalize, allowing tagging of other
                     # things, we need to also the model for each pk
                     thing_to_tag_pks,
-
+                    thing_to_tag_model=None,
                     user=None,
                     comment='',
                     supress_transfer_to_dingos=False):
@@ -641,8 +670,10 @@ class ActionableTag(models.Model):
         from .mantis_import import update_and_transfer_tag_action_to_dingos
         # The content type must be defined here: defining it outside the function
         # leads to a circular import
-        CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
-
+        if not thing_to_tag_model:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(SingletonObservable)
+        else:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(thing_to_tag_model)
 
         # Create the list of actionable tags for this bulk action
         actionable_tag_list = []
@@ -671,14 +702,14 @@ class ActionableTag(models.Model):
                 if action_flag == ActionableTaggingHistory.ADD:
                     actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
                                                                                       object_id=pk,
-                                                                                      content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                                                                                      content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                     if created:
                         affected_tags.add(actionable_tag)
 
                 elif action_flag == ActionableTaggingHistory.REMOVE:
                     actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
                                                                         object_id=pk,
-                                                                        content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                                                                        content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
 
                     if actionable_tag_2xs:
                         actionable_tag_2xs.delete()
@@ -688,7 +719,7 @@ class ActionableTag(models.Model):
                         # We therefore need to remove all tags in the context
                         actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag__context=actionable_tag.context,
                                                                             object_id=pk,
-                                                                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)
+                                                                            content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                         for actionable_tag_2x in actionable_tag_2xs:
                             affected_tags.add(actionable_tag_2x.actionable_tag)
                         actionable_tag_2xs.delete()
@@ -696,10 +727,11 @@ class ActionableTag(models.Model):
             ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
                                                                  affected_tags,
                                                                  thing_to_tag_pks,
+                                                                 thing_to_tag_model,
                                                                  user,
                                                                  comment)
 
-            if not supress_transfer_to_dingos:
+            if not supress_transfer_to_dingos and CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
                 update_and_transfer_tag_action_to_dingos(action,
                                                          context_name_set,
                                                          thing_to_tag_pks,
@@ -773,7 +805,10 @@ class ActionableTaggingHistory(models.Model):
     marked = generic.GenericForeignKey('content_type', 'object_id')
 
     @classmethod
-    def bulk_create_tagging_history(cls,action_flag,tags,things_to_tag_pks,user,comment):
+    def bulk_create_tagging_history(cls,action_flag,tags,
+                                    thing_to_tag_pks,
+                                    thing_to_tag_model=None,
+                                    user=None,comment=''):
         # TODO:
         # CONTENT_TYPE_SINGLETON cannot be defined outside this,
         # because it leads to a circular import ...
@@ -781,10 +816,17 @@ class ActionableTaggingHistory(models.Model):
 
         #action = getattr(cls,action.upper())
 
+        if not thing_to_tag_model:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(SingletonObservable)
+        else:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(thing_to_tag_model)
+
+
         entry_list = []
-        for pk in things_to_tag_pks:
-                entry_list.extend([ActionableTaggingHistory(action=action_flag,user=user,comment=comment,object_id=pk,
-                                                            content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+        for pk in thing_to_tag_pks:
+                entry_list.extend([ActionableTaggingHistory(action=action_flag,user=user,comment=comment,
+                                                            object_id=pk,
+                                                            content_type=CONTENT_TYPE_OF_THINGS_TO_TAG,
                                                             tag=x) for x in tags])
         ActionableTaggingHistory.objects.bulk_create(entry_list)
 

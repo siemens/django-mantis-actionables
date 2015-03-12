@@ -9,7 +9,7 @@ MANTIS_ACTIONABLES_STIX_REPORT_FAMILY_AND_TYPES = [{'iobject_type': 'STIX_Packag
 
 MANTIS_ACTIONABLES_ACTIVE_EXPORTERS = ['cybox_all']
 
-DASHBOARD_CONTENTS = {
+MANTIS_ACTIONABLES_DASHBOARD_CONTENTS = {
 'email_addresses' : {
         'basis': 'SingletonObservable',
         'name': 'Email Addresses',

@@ -17,24 +17,25 @@
 
 from django.conf import settings
 
+import importlib
 
 import mantis_actionables
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 def read_from_conf(name):
     if settings.configured and 'MANTIS_ACTIONABLES' in dir(settings):
         default_value = getattr(mantis_actionables,"MANTIS_ACTIONABLES_%s" % name)
-
-        setattr(mantis_actionables,"MANTIS_ACTIONABLES_%s" % name,
-                settings.MANTIS_ACTIONABLES.get('name', default_value))
-
-
+        final_value = settings.MANTIS_ACTIONABLES.get(name, default_value)
+        setattr(mantis_actionables,"MANTIS_ACTIONABLES_%s" % name, final_value)
 read_from_conf('STIX_REPORT_FAMILY_AND_TYPES')
-read_from_conf('MANTIS_ACTIONABLES_ACTIVE_EXPORTERS')
-read_from_conf('MANTIS_ACTIONABLES_DASHBOARD_CONTENTS')
-read_from_conf('MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX')
-read_from_conf('MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH')
-read_from_conf('MANTIS_ACTIONABLES_SRC_META_DATA_FUNCTION_PATH')
+read_from_conf('ACTIVE_EXPORTERS')
+read_from_conf('DASHBOARD_CONTENTS')
+read_from_conf('CONTEXT_TAG_REGEX')
+read_from_conf('STATUS_UPDATE_FUNCTION_PATH')
+read_from_conf('SRC_META_DATA_FUNCTION_PATH')
 
 
 

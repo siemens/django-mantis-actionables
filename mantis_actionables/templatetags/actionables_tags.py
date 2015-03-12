@@ -31,6 +31,5 @@ def show_ContextMetaData(context_obj,widget_config=None):
     for button in widget_config.get('action_buttons',[]):
         context["%s_button" % button] = True
 
-    print context
     return context
 

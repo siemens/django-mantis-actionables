@@ -36,6 +36,7 @@ if dashboard_index_url:
                            MenuItem("Import Sources", reverse("actionables_all_imports"), weight = 5 ),
                            MenuItem("Status Infos", reverse("actionables_all_status_infos"), weight = 5 ),
                            MenuItem("Investigations", reverse("actionables_context_list"), weight = 5 ),
+                           MenuItem("Imports", "%s?&o=-timestamp" % reverse("actionables_import_info_list"), weight = 5 ),
                            MenuItem("Dashboard", reverse("mantis_dashboard:index"), weight = 5 ),
                            MenuItem("Bulk Search", reverse("mantis_dashboard:bulk_search"), weight = 10 )
                        )
