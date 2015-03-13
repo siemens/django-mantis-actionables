@@ -293,7 +293,7 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
                 ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Source TS','0'),
+                ('sources__timestamp','Imported into Mantis Actionables','0'),
                 ('value','Value','1'),
                 ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
                 ('sources__top_level_iobject__name','STIX Name','0')
@@ -354,7 +354,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
                 ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Source TS','0'),
+                ('sources__timestamp','Imported into MANTIS Actionables','0'),
                 ('type__name','Type','0'),
                 ('subtype__name','Subtype','0'),
                 ('value','Value','1'),
