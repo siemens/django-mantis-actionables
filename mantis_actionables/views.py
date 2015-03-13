@@ -28,9 +28,11 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
+from django.http import HttpResponseRedirect
+from django.core.urlresolvers import reverse
 
 from django.contrib import messages
-
+from taggit.models import Tag
 from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.forms import InvestigationForm
 from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
@@ -876,8 +878,13 @@ class ActionablesContextEditView(BasicDetailView):
         context['title'] = "Edit context: %s" % self.object.name
 
         if not self.form:
-            self.form = ContextEditForm(current_type = self.object.type,
-                                        current_name = self.object.name)
+            self.form = ContextEditForm({'type': self.object.type,
+                                         'title': self.object.title,
+                                         'description': self.object.description,
+                                         'related_incident_id' : self.object.related_incident_id},
+                                         current_type = self.object.type,
+                                         current_name = self.object.name)
+
 
         context['form'] = self.form
 
@@ -899,18 +906,33 @@ class ActionablesContextEditView(BasicDetailView):
 
             self.object.title = cleaned_data['title']
             self.object.description = cleaned_data['description']
+            self.object.related_incident_id = cleaned_data['related_incident_id']
 
 
             if type != self.object.type:
-                messages.info(request,"Now I would change the type and rename to %s" % cleaned_data['new_context_name'])
-                #existing_contexts = Context.objects.filter(name=new_context_name).update(name=)
-                #existing_actionable_tags = ActionableTag.objects.filter(context__name=new_context_name)
-                #existing_dingos_tags = Tag.objects.filter(name=new_context_name)
 
-            else:
-                messages.info(request,"Type stays the same")
+                # Rename dingos tag
+                try:
+                    tag = Tag.objects.get(name=self.object.name)
+                except ObjectDoesNotExist:
+                    tag = None
+
+                if tag:
+                    tag.name = cleaned_data['new_context_name']
+                    tag.save()
+
+                # Rename actionable tags
+
+                TagName.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
+                self.object.name = cleaned_data['new_context_name']
+                self.object.type = type
+                messages.success(request,"Context and associated tags renamed to '%s'" % cleaned_data['new_context_name'])
+
 
             self.object.save()
+            messages.success(request,"Changes written.")
+
+            return HttpResponseRedirect(self.object.get_absolute_url())
         else:
             messages.error(request,"Please enter valid information.")
 

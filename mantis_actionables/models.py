@@ -122,9 +122,13 @@ class Action(models.Model):
 
     comment = models.TextField(blank=True)
 
+    class Meta:
+        unique_together = ('user','comment')
+
+
 
 class EntityType(models.Model):
-    name = models.CharField(max_length=256)
+    name = models.CharField(max_length=256,unique=True)
 
     objects = models.Manager()
     cached_objects = CachingManager()
@@ -407,6 +411,8 @@ class Status2X(models.Model):
     def __unicode__(self):
         return "Status2X: id %s, active %s, status_id %s, marked_id %s" % (self.id,self.active,self.status_id,self.marked.id)
 
+    class Meta:
+        unique_together=('action','status','timestamp')
 
 
 class SingletonObservableType(models.Model):
@@ -526,7 +532,7 @@ class SingletonObservable(models.Model):
 
 
 class SignatureType(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255,unique=True)
 
 class IDSSignature(models.Model):
     type = models.ForeignKey(SignatureType)
@@ -639,11 +645,13 @@ class ActionableTag(models.Model):
     objects = models.Manager()
     cached_objects = CachingManager()
 
+    class Meta:
+        unique_together=('context','tag')
+
     @classmethod
     def bulk_action(cls,
                     action,
                     context_name_pairs,
-
                     # TODO: once we want to generalize, allowing tagging of other
                     # things, we need to also the model for each pk
                     thing_to_tag_pks,
@@ -651,6 +659,7 @@ class ActionableTag(models.Model):
                     user=None,
                     comment='',
                     supress_transfer_to_dingos=False):
+
         """
         Input:
         - action: either 'add' or 'remove'
@@ -680,6 +689,7 @@ class ActionableTag(models.Model):
 
         context_name_set = set([])
         for (context_name,tag_name) in context_name_pairs:
+
             context,created = Context.cached_objects.get_or_create(name=context_name)
 
             context_name_set.add(context_name)
@@ -690,6 +700,8 @@ class ActionableTag(models.Model):
                                                                                  tag_id=tag_name.pk)
 
 
+
+
             actionable_tag_list.append(actionable_tag)
 
         if action == 'add':
@@ -697,9 +709,11 @@ class ActionableTag(models.Model):
         elif action == 'remove':
             action_flag = ActionableTaggingHistory.REMOVE
         for pk in thing_to_tag_pks:
+
             for actionable_tag in actionable_tag_list:
                 affected_tags = set([])
                 if action_flag == ActionableTaggingHistory.ADD:
+
                     actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
                                                                                       object_id=pk,
                                                                                       content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
@@ -737,23 +751,23 @@ class ActionableTag(models.Model):
                                                          thing_to_tag_pks,
                                                          user=user,
                                                          comment=comment)
+            if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+                singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
+                for singleton in singletons:
 
-            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
-            for singleton in singletons:
+                    actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
+                                                                      x.actionable_tag.tag.name),
+                                                 singleton.actionable_tags.all()))
+                    actionable_tag_list_repr = list(actionable_tag_set)
+                    actionable_tag_list_repr.sort()
 
-                actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
-                                                                  x.actionable_tag.tag.name),
-                                             singleton.actionable_tags.all()))
-                actionable_tag_list = list(actionable_tag_set)
-                actionable_tag_list.sort()
+                    updated_tag_info = ",".join(actionable_tag_list_repr)
 
-                updated_tag_info = ",".join(actionable_tag_list)
+                    singleton.actionable_tags_cache = updated_tag_info
 
-                singleton.actionable_tags_cache = updated_tag_info
+                    logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
 
-                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
-
-                singleton.save()
+                    singleton.save()
 
 
 

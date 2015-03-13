@@ -118,7 +118,7 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
                                                                           tag__name = dingos_tag_name,
                                                                           object_id__in = fact_pks,
                                                                           content_type = fact_content_type).order_by('-timestamp')
-    result_user = None
+
 
     if likely_dingos_tag_history_entries:
         likely_matching_entry = likely_dingos_tag_history_entries[0]
@@ -134,13 +134,15 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
 
                 comment = "%s (Comment and user derived automatically from DINGOS tag)" % likely_matching_entry.comment
                 result_user = likely_matching_entry.user
+
             else:
                 comment = ""
         if (not result_user) and likely_matching_entry.user and likely_matching_entry.user != user:
             result_user = likely_matching_entry.user
             comment = "(User derived automatically from DINGOS tag history)"
-        else:
+        if user and not result_user:
             result_user = user
+
 
     return (result_user,comment)
 

@@ -38,13 +38,19 @@ class TagForm(autocomplete_light.ModelForm):
 
 class ContextEditForm(forms.Form):
     def __init__(self,*args,**kwargs):
+
         self.current_type = kwargs.pop('current_type')
         self.current_name = kwargs.pop('current_name')
+
         super(ContextEditForm,self).__init__(*args,**kwargs)
+
+
+
     title = forms.CharField(
                             max_length=256,
                             widget=widgets.TextInput(attrs={'size':'100','class':'vTextField'}))
     description = forms.CharField(max_length=4096,widget=widgets.Textarea(attrs={'class':'vTextField'}))
+
     type = forms.ChoiceField(choices=Context.TYPE_CHOICES)
     related_incident_id = forms.SlugField(max_length=40,required=False)
 
@@ -67,11 +73,6 @@ class ContextEditForm(forms.Form):
 
                 if existing_contexts:
                     raise forms.ValidationError("Cannot change type and rename, because there already exists a context %s" % new_context_name)
-
-                existing_actionable_tags = ActionableTag.objects.filter(context__name=new_context_name)
-
-                if existing_actionable_tags:
-                    raise forms.ValidationError("Cannot change type and rename, because there already exist actionable tags with context %s" % new_context_name)
 
                 existing_dingos_tags = Tag.objects.filter(name=new_context_name)
                 if existing_dingos_tags:
