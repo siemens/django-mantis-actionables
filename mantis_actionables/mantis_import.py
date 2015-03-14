@@ -649,6 +649,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     - Call the import function on the determined STIX reports
 
     """
+    start_time = timezone.now()
     if not imported_until:
         imported_until = timezone.now()
     report_filters = []
@@ -666,7 +667,13 @@ def process_STIX_Reports(imported_since, imported_until=None):
     top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
                                                 create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test')
     top_level_iobjs = list(top_level_iobjs.filter(query))
-    return import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
+    result = import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
+
+    end_time = timezone.now()
+
+    logger.info("Start of import: %s; end of import: %s" % (start_time,end_time))
+
+    return result
 
 def extract_essence(node_info, graph):
     result = {}
