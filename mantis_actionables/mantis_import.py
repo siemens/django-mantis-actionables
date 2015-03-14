@@ -378,6 +378,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
         else:
             top_level_iobj_pks = top_level_iobjs
 
+    else:
+        top_level_iobj_pks = []
 
     action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
@@ -662,7 +664,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     for item in queries:
         query |= item
     top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                                create_timestamp__lte=imported_until)
+                                                create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test')
     top_level_iobjs = list(top_level_iobjs.filter(query))
     return import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
 
