@@ -61,18 +61,24 @@
          {% for source in object.sources.all %}
            <tr class="grp-row grp-row-{{ odd_even }}">
             <td></td>
-               <td></td>
-               <td></td>
-            <td colspan="1" class="w-1 nowrap middle">
+            <td colspan="3" class="w-1 nowrap middle">
 	      {% if source.top_level_iobject_identifier %}
-                {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_obj_url %}
-
+                {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
+              {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
+                {{ source.iobject_identifier.latest.iobject_type.name }}
                 {%  if stix_obj_url %}
-		
                 <a href="{{ stix_obj_url }}">
-                    {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
+                    <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
                 </a>
                 {% endif %}
+
+                in Report {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
+                {%  if stix_tl_obj_url %}
+                <a href="{{ stix_tl_obj_url }}">
+                     <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
+                </a>
+                {% endif %}
+
 
               {% else %}
                 {% url  'actionables_import_info_details' pk=source.import_info.pk as import_info_url %}
