@@ -48,7 +48,7 @@ from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
 from .forms import ContextEditForm
 
-
+from .tasks import actionable_tag_bulk_action
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
@@ -679,7 +679,11 @@ class ActionablesContextView(BasicFilterView):
         return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
                                                                                            'actionable_tags__actionable_tag__context',
                                                                                            'actionable_tags__actionable_tag__tag').\
-            prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace')
+            select_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
+            select_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
+            select_related('sources__iobject_identifier__latest__iobject_type').\
+            select_related('sources__import_info','sources__import_info__namespace')
+
 
 
 
@@ -728,7 +732,7 @@ class ActionablesTagHistoryView(BasicTemplateView):
                          filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
                          filter(tag__context__name=self.tag_context).order_by('-timestamp').\
                          values(*cols_history))
-        print history_q
+
 
         obj_info_mapping = {}
         for model,cols in self.possible_models.items():
@@ -848,18 +852,18 @@ class ImportInfoDetailsView(BasicFilterView):
         cleaned_data = self.form.cleaned_data
         if form_valid:
             context_name = cleaned_data.get('investigation_tag')
-            ActionableTag.bulk_action(action="add",
-                                      context_name_pairs=[(context_name,context_name)],
-                                      thing_to_tag_pks= map(lambda x:x.pk,self.queryset),
-                                      user=request.user,
-                                      comment = "Investigation initiated on report '%s'" % self.object.name)
+            actionable_tag_bulk_action.delay(action="add",
+                                             context_name_pairs=[(context_name,context_name)],
+                                             thing_to_tag_pks= map(lambda x:x.pk,self.queryset),
+                                             user=request.user,
+                                             comment = "Investigation initiated on report '%s'" % self.object.name)
             ActionableTag.bulk_action(action="add",
                                       context_name_pairs=[(context_name,context_name)],
                                       thing_to_tag_pks= [self.object.pk],
                                       thing_to_tag_model= ImportInfo,
                                       user=request.user,
                                       comment = "Investigation initiated on report '%s'" % self.object.name)
-            messages.success(request,"Investigation tag has been added to all indicators in this report.")
+            messages.success(request,"Investigation tag is being added to all indicators in this report.")
         else:
             messages.error(request,"Please chose a valid investigation tag.")
         return super(ImportInfoDetailsView, self).get(request, *args, **kwargs)

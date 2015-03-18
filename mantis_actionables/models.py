@@ -704,11 +704,14 @@ class ActionableTag(models.Model):
 
             actionable_tag_list.append(actionable_tag)
 
+        logger.debug("Got actionable tags %s from DB" % actionable_tag_list)
+
         if action == 'add':
             action_flag = ActionableTaggingHistory.ADD
         elif action == 'remove':
             action_flag = ActionableTaggingHistory.REMOVE
         for pk in thing_to_tag_pks:
+            logger.debug("Treating thing to tag with pk %s" % pk)
 
             for actionable_tag in actionable_tag_list:
                 affected_tags = set([])
@@ -719,6 +722,8 @@ class ActionableTag(models.Model):
                                                                                       content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                     if created:
                         affected_tags.add(actionable_tag)
+
+                    logger.debug("Actionable_tag_2x %s, created: %s" % (actionable_tag_2x.pk,created))
 
                 elif action_flag == ActionableTaggingHistory.REMOVE:
                     actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
@@ -738,36 +743,37 @@ class ActionableTag(models.Model):
                             affected_tags.add(actionable_tag_2x.actionable_tag)
                         actionable_tag_2xs.delete()
 
+            logger.debug("Updating history")
             ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
                                                                  affected_tags,
-                                                                 thing_to_tag_pks,
+                                                                 [pk],
                                                                  thing_to_tag_model,
                                                                  user,
                                                                  comment)
+            logger.debug("History updated")
+        if not supress_transfer_to_dingos and CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+            update_and_transfer_tag_action_to_dingos(action,
+                                                     context_name_set,
+                                                     thing_to_tag_pks,
+                                                     user=user,
+                                                     comment=comment)
+        if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
+            for singleton in singletons:
 
-            if not supress_transfer_to_dingos and CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
-                update_and_transfer_tag_action_to_dingos(action,
-                                                         context_name_set,
-                                                         thing_to_tag_pks,
-                                                         user=user,
-                                                         comment=comment)
-            if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
-                singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
-                for singleton in singletons:
+                actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
+                                                                  x.actionable_tag.tag.name),
+                                             singleton.actionable_tags.all()))
+                actionable_tag_list_repr = list(actionable_tag_set)
+                actionable_tag_list_repr.sort()
 
-                    actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
-                                                                      x.actionable_tag.tag.name),
-                                                 singleton.actionable_tags.all()))
-                    actionable_tag_list_repr = list(actionable_tag_set)
-                    actionable_tag_list_repr.sort()
+                updated_tag_info = ",".join(actionable_tag_list_repr)
 
-                    updated_tag_info = ",".join(actionable_tag_list_repr)
+                singleton.actionable_tags_cache = updated_tag_info
 
-                    singleton.actionable_tags_cache = updated_tag_info
+                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
 
-                    logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
-
-                    singleton.save()
+                singleton.save()
 
 
 

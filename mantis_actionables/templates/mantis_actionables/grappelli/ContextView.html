@@ -79,14 +79,16 @@
                 </a>
                 {% endif %}
 
-
               {% else %}
                 {% url  'actionables_import_info_details' pk=source.import_info.pk as import_info_url %}
+                Actionables Import
                 {%  if import_info_url %}
                 <a href="{{ import_info_url }}">
-                    {{source.import_info.namespace.uri}} '{{ source.import_info.name }}'
+                    <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
                 </a>
                 {% endif %}
+                    {{ source.import_info.namespace.uri}} '{{ source.import_info.name }}'
+
 	      {% endif %}
 
             </td>

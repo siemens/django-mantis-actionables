@@ -24,6 +24,8 @@ from celery import shared_task
 
 from mantis_actionables.core import crowdstrike
 
+from .models import ActionableTag
+
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +55,8 @@ def async_tag_transfer_into_actionables(*args,**kwargs):
 @shared_task
 def import_crowdstrike_csv(csv_file):
     crowdstrike.import_crowdstrike_csv(csv_file)
+
+@shared_task
+
+def actionable_tag_bulk_action(*args,**kwargs):
+    ActionableTag.bulk_action(*args,**kwargs)
