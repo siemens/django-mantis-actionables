@@ -815,7 +815,7 @@ class ImportInfoDetailsView(BasicFilterView):
 
     @property
     def queryset(self):
-        return SingletonObservable.objects.filter(sources__import_info_id=self.kwargs.get('pk'))
+        return SingletonObservable.objects.filter(sources__import_info_id=self.kwargs.get('pk')).select_related('type','subtype')
 
     def title(self):
 
