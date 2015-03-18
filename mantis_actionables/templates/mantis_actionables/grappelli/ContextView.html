@@ -64,18 +64,24 @@
                <td></td>
                <td></td>
             <td colspan="1" class="w-1 nowrap middle">
+	      {% if source.top_level_iobject_identifier %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_obj_url %}
-                {% url  'actionables_import_info_details' pk=source.import_info.pk as import_info_url %}
+
                 {%  if stix_obj_url %}
+		
                 <a href="{{ stix_obj_url }}">
                     {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
                 </a>
-                {% else %}
+                {% endif %}
+
+              {% else %}
+                {% url  'actionables_import_info_details' pk=source.import_info.pk as import_info_url %}
+                {%  if import_info_url %}
                 <a href="{{ import_info_url }}">
                     {{source.import_info.namespace.uri}} '{{ source.import_info.name }}'
                 </a>
                 {% endif %}
-
+	      {% endif %}
 
             </td>
 
