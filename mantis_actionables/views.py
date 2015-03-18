@@ -679,10 +679,10 @@ class ActionablesContextView(BasicFilterView):
         return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
                                                                                            'actionable_tags__actionable_tag__context',
                                                                                            'actionable_tags__actionable_tag__tag').\
-            select_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
-            select_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
-            select_related('sources__iobject_identifier__latest__iobject_type').\
-            select_related('sources__import_info','sources__import_info__namespace')
+            prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
+            prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
+            prefetch_related('sources__iobject_identifier__latest__iobject_type').\
+            prefetch_related('sources__import_info','sources__import_info__namespace')
 
 
 
