@@ -418,9 +418,9 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
 
 
         if results:
-            results_per_top_level_obj.append((top_level_iobj_pk,results))
+            results_per_top_level_obj.append((top_level_iobj_pk,results,graph))
 
-    for (top_level_iobj_pk, results) in results_per_top_level_obj:
+    for (top_level_iobj_pk, results,graph) in results_per_top_level_obj:
         #async_export_to_actionables(top_level_iobj_pk,results,action=action)
 
         import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user,graph=graph)
