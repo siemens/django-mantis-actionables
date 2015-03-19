@@ -397,6 +397,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
 
         results = []
 
+        details_obj = None
+
         for exporter in MANTIS_ACTIONABLES_ACTIVE_EXPORTERS:
 
             postprocessor_classes = POSTPROCESSOR_REGISTRY[exporter]
@@ -410,20 +412,18 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                     # already been pulled from the database
                                                     # rather than pulling it again for
                                                     # each iteration.
-                                                    details_obj = postprocessor
+                                                    details_obj = details_obj
                                                     )
+
+                details_obj = postprocessor
+
                 (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='exporter')
 
                 results += part_results
 
-
-        if results:
-            results_per_top_level_obj.append((top_level_iobj_pk,results,graph))
-
-    for (top_level_iobj_pk, results,graph) in results_per_top_level_obj:
-        #async_export_to_actionables(top_level_iobj_pk,results,action=action)
-
         import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user,graph=graph)
+
+
 
 def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=None,user=None,graph=None):
     """
@@ -487,6 +487,10 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
 
     identifier_pk_2_related_entity_map = {}
+
+    top_level_node = graph.node[top_level_iobj_pk]
+
+    print "Treating %s:%s" % (top_level_node['identifier_ns'],top_level_node['identifier_uid'])
 
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
