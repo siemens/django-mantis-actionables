@@ -244,6 +244,10 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_rows = 10
 
+    @classmethod
+    def get_cols_dict(cls,table_name):
+        provider_specific_dict = COLS.setdefault(cls.__name__,{})
+        return provider_specific_dict.setdefault(table_name,{})
 
 
     view_name = ""
@@ -408,7 +412,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
     table_rows = 10
     @classmethod
     def init_data(cls):
-        cls.curr_cols = COLS.setdefault('all_imports',{})
+        cls.curr_cols = cls.get_cols_dict("all_imports")
         if not cls.curr_cols:
             #init default column_dicts
             cols_cut = cls.curr_cols.setdefault('cut',{})
@@ -598,11 +602,9 @@ class BasicDatatableView(BasicTemplateView):
         context['tables'] = []
 
         for (i0,i1) in self.table_spec:
-            context['tables'].append((i0,COLS[i1]["all"]))
+            context['tables'].append((i0,COLS[self.data_provider_class.__name__][i1]["all"]))
 
         return context
-
-
 
 
 
