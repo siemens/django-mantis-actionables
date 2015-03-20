@@ -21,6 +21,8 @@
 import datetime
 from querystring_parser import parser
 
+from django.core.urlresolvers import reverse
+
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.template.loader import render_to_string
@@ -48,6 +50,8 @@ from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
 from .forms import ContextEditForm
 
+from dingos.models import vIO2FValue
+
 from .tasks import actionable_tag_bulk_action
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -65,61 +69,36 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def datatable_query(table_name, post, paginate_at, **kwargs):
+def datatable_query(post, paginate_at, **kwargs):
+
+
     post_dict = parser.parse(str(post.urlencode()))
+
 
 
     # Collect prepared statement parameters in here
     params = []
 
-    table_spec = None
 
-    try:
-        table_spec = kwargs.pop('table_spec')
-    except:
-        pass
+    cols = kwargs.pop('query_columns')
 
-    if not table_spec:
-        table_spec = MANTIS_ACTIONABLES_DASHBOARD_CONTENTS[table_name]
+    display_cols = kwargs.pop('display_columns')
 
-    cols = kwargs.pop('cols')
+    config = kwargs.pop('query_config')
 
-    if not table_spec['show_type_column']:
-        cols = cols['cut']
-    else:
-        cols = cols['all']
+    q = config['base'].objects
 
     cols = dict((x, y[0]) for x, y in cols.items())
 
-    # Base query
-    if table_spec['basis'] == 'SingletonObservable':
-        base = SingletonObservable.objects
-        types = table_spec['types']
+    display_cols = dict((x, y[0]) for x, y in display_cols.items())
 
-        type_ids = []
-        if isinstance(types,str):
-            types = [types]
-        for type in types:
-            try:
-                type_obj,created = SingletonObservableType.cached_objects.get_or_create(name=type)
-                type_ids.append(type_obj.pk) #singleton_observable_types[type])
-            except KeyError:
-                continue
-        q = base
+    # extend query by kwargs['filter']
+    for filter in kwargs.pop('filter',[]):
+        q = q.filter(**filter)
 
-        if type_ids:
-            q = q.filter(type_id__in=type_ids)
-
-        # extend query by kwargs['select_related']
-        q = q.select_related(*kwargs.pop('select_related',[]))
-
-        # extend query by kwargs['filter']
-        for filter in kwargs.pop('filter',[]):
-            q = q.filter(**filter)
-
-        q = q.values_list(*(cols.values()))
-        #sources__id for join on sources table
-        q_count_all = q.count()
+    q = q.values_list(*(cols.values()))
+    #sources__id for join on sources table
+    q_count_all = q.count()
 
 
     # Treat the filter values (WHERE clause)
@@ -154,7 +133,10 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     sv = post_dict.get('search', {})
     sv = str(sv.get('value', '')).strip()
     if sv != '':
-        for n,c in cols.iteritems():
+        for n,c in display_cols.iteritems():
+            print n
+            print c
+
             if post_dict['columns'][n]['searchable'] == "true":
                 col_search.append({
                     c + '__contains' : sv
@@ -215,13 +197,33 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_spec = None
 
+    table_spec_map = {}
+
     table_rows = 10
 
+    @classmethod
+    def get_cols_dict(cls,table_name):
+
+        table_name = table_name.lower().replace(' ','_')
+        provider_specific_dict = COLS.setdefault(cls.__name__,{})
+        return provider_specific_dict.setdefault(table_name,{})
+
+
+    view_name = ""
+
+    @classmethod
+    def qualified_view_name(cls):
+        return "actionables_dataprovider_%s" % cls.view_name
+
     curr_cols = None
-    def get_curr_cols(self):
+
+    def get_curr_cols(self,table_name):
         if self.curr_cols == None:
             self.init_data()
-        return self.curr_cols
+
+        table_name = table_name.lower().replace(' ','_')
+
+        return COLS[self.__class__.__name__][table_name]
 
     @classmethod
     def init_data(cls):
@@ -265,66 +267,99 @@ class BasicTableDataProvider(BasicJSONView):
 
         table_name = POST.get('table_type').replace(' ','_')
 
-        kwargs =  {}
-        if table_name in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.keys():
-            # Build the query for the data, and fetch that stuff
-            kwargs = {
-                'cols' : self.get_curr_cols(),
+
+        config_info = self.get_curr_cols(table_name)
+
+        kwargs = {
+                'query_columns' : config_info['query_columns'],
+                'display_columns' : config_info.get('display_columns',config_info['query_columns']),
                 'filter' : self.filter,
-                'select_related' : self.select_related
-            }
-        elif self.table_spec:
-             kwargs = {
-                'cols' : self.get_curr_cols(),
-                'filter' : self.filter,
-                'select_related' : self.select_related
-             }
+                'query_config' : config_info['query_config'],
+                }
 
-        if kwargs:
-             kwargs['table_spec'] = self.table_spec
+        q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
 
-             q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, paginate_at = self.table_rows, **kwargs)
+        self.postprocess(table_name,res,q)
+        return res
 
-             self.postprocess(table_name,res,q)
-             return res
+def table_name_slug(table_name):
+    return table_name.lower().replace(' ','_')
 
-class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
+class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider):
 
-    select_related = ['sources__top_level_iobject_identifier__namespace',
-                      'sources__top_level_iobject_identifier__latest' ]
+    view_name = "singletons_with_source_one_table"
+
+    table_spec =  {}
+
+    TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = {
+        'model' : SingletonObservable,
+        'COMMON_BASE' : [
+                ('sources__tlp','TLP','0'), #0
+                ('sources__timestamp','Source TS','0'), #1
+                ('type__name','Type','1'), #2
+                ('subtype__name','Subtype','1'), #3
+                ('value','Value','1'), #4
+                ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
+                ('sources__related_stix_entities__essence','Context Info','0'), #6
+            ],
+        'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
+                             ('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
+                             ('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
+                             ('sources__import_info__namespace__uri','Report Source','0'), #3
+                             ('sources__import_info__name','Report Name','0'), #4
+                             ('sources__import_info_id','Report Import Info PK','0') #5
+                            ],
+        'DISPLAY_ONLY' :  [('','Report Source','0'),
+                             ('','Report Name','0'),
+                             ]
+    }
+
+
+
+    # TODO only ten works at the moment -- there is some dependency on 10
+    # in the calculation of the pagination
+    table_rows = 10
     @classmethod
     def init_data(cls):
-        cls.curr_cols = COLS.setdefault('standard',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+        for table_name in cls.table_spec:
+            table_name = table_name.lower().replace(' ','_')
+            this_table_spec = cls.table_spec.get(table_name)
+            cls.curr_cols = cls.get_cols_dict(table_name)
+            if not cls.curr_cols:
+                #init default column_dicts
+                query_columns = cls.curr_cols.setdefault('query_columns',{})
+                display_columns = cls.curr_cols.setdefault('display_columns',{})
+                query_config = cls.curr_cols.setdefault('query_config',{})
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Source TS','0'),
-                ('value','Value','1'),
-                ('sources__related_stix_entities__entity_type__name','Context Type','0'),
-                ('sources__related_stix_entities__essence','Context Info','0'),
-                ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
-                ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
+                query_config['base'] = this_table_spec['model']
 
-            ]
+                COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
+                COLS_TO_DISPLAY = this_table_spec['COMMON_BASE'] + this_table_spec['DISPLAY_ONLY']
 
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = [
-                (2,('subtype__name','Type','1')),]
+                this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
 
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
+                fillColDict(query_columns,COLS_TO_QUERY)
+                fillColDict(display_columns,COLS_TO_DISPLAY)
 
     def postprocess(self,table_name,res,q):
+        offset = self.table_spec[table_name]['offset']
+
         for row in q:
             row = list(row)
-            row[0] = Source.TLP_COLOR_CSS.get(row[0],'ERROR')
+
+            row[0] = Source.TLP_COLOR_CSS.get(row[0],"ERROR")
+            if row[offset+0]:
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
+                                                                 row[offset+1])
+                row = row[:-4]
+            else:
+                row[offset+0] = row[offset+3]
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+5]}),
+                                                                 row[offset+4])
+                row = row[:-4]
+
             #print row[1]
             #row[1] = datetime.datetime.date(row[1]).strftime('%Y-%m-%d %H:%M:%S %Z')
             #print "> %s" % row[1]
@@ -345,96 +380,68 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
         #             res['cols'][table_name + '_ns_filter'].append({ns : ns})
         #
 
-class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWithSourceDataProvider):
-    table_spec =  {
-        'basis': 'SingletonObservable',
-        'name': 'All Imports',
+
+class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
+    view_name = "unified_search"
+
+    table_spec_map = {'io2vf' : {
+        'basis': 'vIO2FValue',
+        'name': 'io2vf',
         'types' : [],
-        'show_type_column': True
-    }
+        'show_type_column': False
+         },
+     'actionables' : {
+        'basis': 'vIO2FValue',
+        'name': 'actionables',
+        'types' : [],
+        'show_type_column': False
+    }}
 
-    # TODO only ten works at the moment -- there is some dependency on 10
-    # in the calculation of the pagination
+
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('unified_search',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('iobject_identifier_uri','Namespace','0'),
+                ('iobject_identifier_uid','Identifier','0'),
+                ('iobject_name','Name','0'),
+                ('term','Term','0'),
+                ('attribute','Attribute','0'),
+                ('value','Value','1'),
+            ]
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
+
+
+    def postprocess(self,table_name,res,q):
+        for row in q:
+            row = list(row)
+            res['data'].append(row)
+
+
     table_rows = 10
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('all_imports',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
-
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Source TS','0'),
-                ('type__name','Type','1'),
-                ('subtype__name','Subtype','1'),
-                ('value','Value','1'),
-                ('sources__pk','Source PK','0'),
-                ('sources__related_stix_entities__entity_type__name','Context Type','0'),
-                ('sources__related_stix_entities__essence','Context Info','0'),
-                ('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'),
-                ('sources__top_level_iobject_identifier__latest__name','Report Name','0'),
-
-            ]
 
 
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = []
+class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider):
 
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
+    view_name = "singletons_with_source_data_one_table"
 
-
-
-class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('status',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
-
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('value','Value','1'),
-                ('actionable_tags_cache','Tags','1')
-            ]
-
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = [
-                (1,('subtype__name','Type','1')),]
-
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
-
-    filter = [{
-        'status_thru__active' : True
-    }]
-    #select_related = ['status_thru__status']
-
-class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWithStatusDataProvider):
-    table_spec =  {
-    'basis': 'SingletonObservable',
-    'name': 'Indicators and their status',
-    'types' : [],
-    'show_type_column': True
-    }
-
+    TABLE_NAME_ALL_STATI = "Status information for indicators"
 
     @classmethod
     def init_data(cls):
-        cls.curr_cols = COLS.setdefault('all_status_infos',{})
+        cls.curr_cols = cls.get_cols_dict(cls.TABLE_NAME_ALL_STATI)
         if not cls.curr_cols:
             #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+            cols_all = cls.curr_cols.setdefault('query_columns',{})
+            query_config = cls.curr_cols.setdefault('query_config',{'base':SingletonObservable})
 
             #cols to display in tables (query_select_row,col_name,searchable)
             COLS_TO_DISPLAY = [
@@ -450,12 +457,6 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
                 ('actionable_tags_cache','Tags','1')
             ]
 
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = []
-
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
             fillColDict(cols_all,COLS_TO_DISPLAY)
 
     def postprocess(self,table_name,res,q):
@@ -475,71 +476,88 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
     #select_related = ['status_thru__status']
 
 
-def all_status_infos(request):
-    SingletonObservablesWithStatusOneTableDataProvider.init_data()
-    name = 'all_status_infos'
+class BasicDatatableView(BasicTemplateView):
+
+
+    initial_filter = ''
+    data_provider_class = None
+
+
+    def get(self, request, *args, **kwargs):
+        self.data_provider_class.init_data()
+
+        return super(BasicDatatableView, self).get(request, *args, **kwargs)
+
+
+    def get_context_data(self, **kwargs):
+        context = super(BasicDatatableView, self).get_context_data(**kwargs)
+        context['data_view_name'] = self.data_provider_class.qualified_view_name
+        context['title'] = self.title
+        context['initial_filter'] = self.initial_filter
+        context['tables'] = []
+
+        for table_name in self.table_spec:
+            table_name_slug = table_name.lower().replace(' ','_')
+            display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
+                                                                                      COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
+            context['tables'].append((table_name,display_columns))
+
+        return context
+
+
+
+
+class SourceInfoView(BasicDatatableView):
+
+    data_provider_class = SingeltonObservablesWithSourceOneTableDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    title = 'Indicators and their sources'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS]
+
+
+class StatusInfoView(BasicDatatableView):
+
+    data_provider_class = SingletonObservablesWithStatusOneTableDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    title = 'Indicator Status Info'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_STATI]
+
+
+
+def unified_search(request):
+
+
+
+    UnifiedSearchSourceDataProvider.init_data()
+    name = 'unified_search'
     content_dict = {
-        'title' : 'Indicators and their status',
+        'title' : 'Unified search',
         'tables' : [],
-        'view' : name
+        'data_view_name' : UnifiedSearchSourceDataProvider.qualified_view_name
     }
 
-
-    content_dict['tables'].append((content_dict['title'],COLS[name]['all']))
-
-    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+    unified_search_tables = UnifiedSearchSourceDataProvider.table_spec_map
 
 
-
-def all_imports(request):
-    SingeltonObservablesWithSourceOneTableDataProvider.init_data()
-    name = 'all_imports'
-    content_dict = {
-        'title' : 'Indicators and their sources',
-        'tables' : [],
-        'view' : name
-    }
-
-    content_dict['tables'].append(('All',COLS[name]['all']))
-    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
-
-
-def imports(request):
-    SingletonObservablesWithSourceDataProvider.init_data()
-    name = 'standard'
-    content_dict = {
-        'title' : 'Indicators and their sources',
-        'tables' : [],
-        'view' : name
-    }
-
-    for id,table_info in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.items():
+    for id,table_info in unified_search_tables.items():
         if not table_info['show_type_column']:
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
+
+
     return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
                               content_dict, context_instance=RequestContext(request))
 
-def status_infos(request):
-    SingletonObservablesWithStatusDataProvider.init_data()
-    name = 'status'
-    content_dict = {
-        'title' : 'Indicators and their status',
-        'tables' : [],
-        'view' : name
-    }
 
-    for id,table_info in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.items():
-        if not table_info['show_type_column']:
-            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
-        else:
-            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
-
-    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
 
 def processActionablesTagging(data,**kwargs):
     action = data['action']
