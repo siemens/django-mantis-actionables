@@ -578,6 +578,34 @@ class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWit
     #select_related = ['status_thru__status']
 
 
+class BasicDatatableView(BasicTemplateView):
+
+    content_dict =  {}
+    data_provider_class = None
+
+
+    def get(self, request, *args, **kwargs):
+        self.data_provider_class.init_data()
+
+        return super(BasicDatatableView, self).get(request, *args, **kwargs)
+
+
+    def get_context_data(self, **kwargs):
+        context = super(BasicDatatableView, self).get_context_data(**kwargs)
+        context.update(self.content_dict)
+
+        for (i0,i1) in self.table_spec:
+            context['tables'].append((i0,COLS[i1]["all"]))
+
+        print "Tables"
+        print context['tables']
+
+        return context
+
+
+
+
+
 def all_status_infos(request):
     SingletonObservablesWithStatusOneTableDataProvider.init_data()
     name = 'all_status_infos'
@@ -594,19 +622,31 @@ def all_status_infos(request):
                               content_dict, context_instance=RequestContext(request))
 
 
+class SourceInfoView(BasicDatatableView):
 
-def all_imports(request):
-    SingeltonObservablesWithSourceOneTableDataProvider.init_data()
-    name = 'all_imports'
+    data_provider_class = SingeltonObservablesWithSourceOneTableDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
     content_dict = {
         'title' : 'Indicators and their sources',
         'tables' : [],
         'data_view_name' : SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name
     }
 
+    table_spec = [('All', 'all_imports')]
+
+
+
+
+
+def all_imports(request):
+    SingeltonObservablesWithSourceOneTableDataProvider.init_data()
+    name = 'all_imports'
+
     print "%s" %  SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name()
 
-    content_dict['tables'].append(('All',COLS[name]['all']))
+
     return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
                               content_dict, context_instance=RequestContext(request))
 

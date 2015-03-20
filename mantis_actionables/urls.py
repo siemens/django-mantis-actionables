@@ -18,24 +18,14 @@
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, url
-from .views import SingletonObservablesWithSourceDataProvider, \
-    SingeltonObservablesWithSourceOneTableDataProvider, \
-    SingletonObservablesWithStatusDataProvider, \
-    SingletonObservablesWithStatusOneTableDataProvider, \
-    ActionablesContextView, \
-    ActionablesContextList, \
-    ActionablesContextEditView, \
-    ActionablesTagHistoryView,\
-    ImportInfoList,\
-    ImportInfoDetailsView,\
-    UnifiedSearchSourceDataProvider,\
-    unified_search
-
+from .views import *
 
 urlpatterns = patterns(
     'mantis_actionables.views',
     url(r'^imports/$', 'imports', name='actionables_imports'),
-    url(r'^all_imports/$', 'all_imports', name='actionables_all_imports'),
+    url(r'^all_imports/$',
+        SourceInfoView.as_view(),
+        name='actionables_all_imports'),
     url(r'^status_infos/$', 'status_infos', name='actionables_status_infos'),
     url(r'^unified_search/$', 'unified_search', name='actionables_unified_search'),
     url(r'^all_status_infos/$', 'all_status_infos', name='actionables_all_status_infos'),
