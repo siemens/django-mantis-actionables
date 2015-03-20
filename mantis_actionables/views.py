@@ -48,6 +48,8 @@ from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
 from .forms import ContextEditForm
 
+from dingos.models import vIO2FValue
+
 from .tasks import actionable_tag_bulk_action
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -66,7 +68,12 @@ def safe_cast(val, to_type, default=None):
         return default
 
 def datatable_query(table_name, post, paginate_at, **kwargs):
+
+    print table_name
+
+
     post_dict = parser.parse(str(post.urlencode()))
+
 
 
     # Collect prepared statement parameters in here
@@ -79,8 +86,22 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     except:
         pass
 
+    try:
+        table_spec_map = kwargs.pop('table_spec_map')
+
+    except:
+        pass
+
+
+
+    if not table_spec_map:
+        table_spec_map = MANTIS_ACTIONABLES_DASHBOARD_CONTENTS
+
+    print table_spec_map
+
+
     if not table_spec:
-        table_spec = MANTIS_ACTIONABLES_DASHBOARD_CONTENTS[table_name]
+        table_spec = table_spec_map[table_name]
 
     cols = kwargs.pop('cols')
 
@@ -94,6 +115,10 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     # Base query
     if table_spec['basis'] == 'SingletonObservable':
         base = SingletonObservable.objects
+
+    elif table_spec['basis'] == 'vIO2FValue':
+        base = vIO2FValue.objects
+    if True:
         types = table_spec['types']
 
         type_ids = []
@@ -215,7 +240,17 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_spec = None
 
+    table_spec_map = None
+
     table_rows = 10
+
+
+
+    view_name = ""
+
+    @property
+    def qualified_view_name(self):
+        return "actionables_dataprovider_%s" % view_name
 
     curr_cols = None
     def get_curr_cols(self):
@@ -266,7 +301,7 @@ class BasicTableDataProvider(BasicJSONView):
         table_name = POST.get('table_type').replace(' ','_')
 
         kwargs =  {}
-        if table_name in MANTIS_ACTIONABLES_DASHBOARD_CONTENTS.keys():
+        if table_name in self.table_spec_map:
             # Build the query for the data, and fetch that stuff
             kwargs = {
                 'cols' : self.get_curr_cols(),
@@ -280,15 +315,25 @@ class BasicTableDataProvider(BasicJSONView):
                 'select_related' : self.select_related
              }
 
+
+
         if kwargs:
              kwargs['table_spec'] = self.table_spec
+
+             kwargs['table_spec_map'] = self.table_spec_map
+
+
 
              q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, paginate_at = self.table_rows, **kwargs)
 
              self.postprocess(table_name,res,q)
              return res
 
+
+
 class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
+
+    view_name = "singletons_with_source"
 
     select_related = ['sources__top_level_iobject_identifier__namespace',
                       'sources__top_level_iobject_identifier__latest' ]
@@ -346,6 +391,9 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
         #
 
 class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWithSourceDataProvider):
+
+    view_name = "singletons_with_source_one_table"
+
     table_spec =  {
         'basis': 'SingletonObservable',
         'name': 'All Imports',
@@ -390,7 +438,57 @@ class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWit
 
 
 
+class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
+    view_name = "unified_search"
+
+    table_spec_map = {'io2vf' : {
+        'basis': 'vIO2FValue',
+        'name': 'io2vf',
+        'types' : [],
+        'show_type_column': False
+         },
+     'actionables' : {
+        'basis': 'vIO2FValue',
+        'name': 'actionables',
+        'types' : [],
+        'show_type_column': False
+    }}
+
+
+    @classmethod
+    def init_data(cls):
+        cls.curr_cols = COLS.setdefault('unified_search',{})
+        if not cls.curr_cols:
+            #init default column_dicts
+            cols_cut = cls.curr_cols.setdefault('cut',{})
+            cols_all = cls.curr_cols.setdefault('all',{})
+
+            #cols to display in tables (query_select_row,col_name,searchable)
+            COLS_TO_DISPLAY = [
+                ('iobject_identifier_uri','Namespace','0'),
+                ('iobject_identifier_uid','Identifier','0'),
+                ('iobject_name','Name','0'),
+                ('term','Term','0'),
+                ('attribute','Attribute','0'),
+                ('value','Value','1'),
+            ]
+
+            fillColDict(cols_cut,COLS_TO_DISPLAY)
+            fillColDict(cols_all,COLS_TO_DISPLAY)
+
+
+    def postprocess(self,table_name,res,q):
+        for row in q:
+            row = list(row)
+            res['data'].append(row)
+
+
+    table_rows = 10
+
+
 class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
+
+    view_name = "singletons_with_status"
     @classmethod
     def init_data(cls):
         cls.curr_cols = COLS.setdefault('status',{})
@@ -420,6 +518,9 @@ class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
     #select_related = ['status_thru__status']
 
 class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWithStatusDataProvider):
+
+    view_name = "singletons_with_source_data_one_table"
+
     table_spec =  {
     'basis': 'SingletonObservable',
     'name': 'Indicators and their status',
@@ -537,9 +638,38 @@ def status_infos(request):
             content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
         else:
             content_dict['tables'].append((table_info['name'],COLS[name]['all']))
+    print content_dict
 
     return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
                               content_dict, context_instance=RequestContext(request))
+
+def unified_search(request):
+
+
+
+    UnifiedSearchSourceDataProvider.init_data()
+    name = 'unified_search'
+    content_dict = {
+        'title' : 'Unified search',
+        'tables' : [],
+        'data_view_name' : UnifiedSearchSourceDataProvider.qualified_view_name
+    }
+
+    unified_search_tables = UnifiedSearchSourceDataProvider.table_spec_map
+
+
+    for id,table_info in unified_search_tables.items():
+        if not table_info['show_type_column']:
+            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
+        else:
+            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
+
+    print content_dict
+
+    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
+                              content_dict, context_instance=RequestContext(request))
+
+
 
 def processActionablesTagging(data,**kwargs):
     action = data['action']

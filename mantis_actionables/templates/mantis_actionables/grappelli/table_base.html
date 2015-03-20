@@ -3,7 +3,7 @@
 {% block javascripts %}
     {{ block.super }}
     <script>
-      var view = '{{ view }}'
+      var view_url = '{% url data_view_name %}'
     </script>
 {% endblock javascripts %}
 {% load startswith_tags %}

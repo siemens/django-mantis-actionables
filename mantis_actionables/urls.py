@@ -27,7 +27,9 @@ from .views import SingletonObservablesWithSourceDataProvider, \
     ActionablesContextEditView, \
     ActionablesTagHistoryView,\
     ImportInfoList,\
-    ImportInfoDetailsView
+    ImportInfoDetailsView,\
+    UnifiedSearchSourceDataProvider,\
+    unified_search
 
 
 urlpatterns = patterns(
@@ -35,12 +37,25 @@ urlpatterns = patterns(
     url(r'^imports/$', 'imports', name='actionables_imports'),
     url(r'^all_imports/$', 'all_imports', name='actionables_all_imports'),
     url(r'^status_infos/$', 'status_infos', name='actionables_status_infos'),
+    url(r'^unified_search/$', 'unified_search', name='actionables_unified_search'),
     url(r'^all_status_infos/$', 'all_status_infos', name='actionables_all_status_infos'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
-    url(r'^tbl_data/all_imports$', SingeltonObservablesWithSourceOneTableDataProvider.as_view(), name='table_data_source'),
-    url(r'^tbl_data/standard$', SingletonObservablesWithSourceDataProvider.as_view(), name='table_data_source'),
-    url(r'^tbl_data/status$', SingletonObservablesWithStatusDataProvider.as_view(), name='table_data_source_status'),
-    url(r'^tbl_data/all_status_infos$', SingletonObservablesWithStatusOneTableDataProvider.as_view(), name='table_data_source_status'),
+    url(r'^tbl_data/all_imports$',
+        SingeltonObservablesWithSourceOneTableDataProvider.as_view(),
+        name=SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name),
+    url(r'^tbl_data/standard$', SingletonObservablesWithSourceDataProvider.as_view(),
+        name = SingletonObservablesWithSourceDataProvider.qualified_view_name,
+        ),
+    url(r'^tbl_data/status$',
+        SingletonObservablesWithStatusDataProvider.as_view(),
+        name=SingletonObservablesWithStatusDataProvider.qualified_view_name),
+
+    url(r'^tbl_data/unified_search$',
+        UnifiedSearchSourceDataProvider.as_view(),
+        name=UnifiedSearchSourceDataProvider.qualified_view_name),
+    url(r'^tbl_data/all_status_infos$',
+        SingletonObservablesWithStatusOneTableDataProvider.as_view(),
+        name=SingletonObservablesWithStatusOneTableDataProvider.qualified_view_name),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/?$', ActionablesContextView.as_view(), name='actionables_context_view'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/edit$', ActionablesContextEditView.as_view(), name='actionables_context_edit_view'),
     url(r'^context/?$', ActionablesContextList.as_view(), name='actionables_context_list'),
