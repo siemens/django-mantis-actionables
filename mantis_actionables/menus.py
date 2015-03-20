@@ -33,8 +33,8 @@ if dashboard_index_url:
                        weight = 5,
                        check = lambda request: request.user.is_authenticated(),
                        children = (
-                           MenuItem("Import Sources", reverse("actionables_all_imports"), weight = 5 ),
-                           MenuItem("Status Infos", reverse("actionables_all_status_infos"), weight = 5 ),
+                           MenuItem("Indicators by Source", reverse("actionables_all_imports"), weight = 5 ),
+                           MenuItem("Indicator with Status", reverse("actionables_all_status_infos"), weight = 5 ),
                            MenuItem("Investigations", reverse("actionables_context_list"), weight = 5 ),
                            MenuItem("Imports", "%s?&o=-timestamp" % reverse("actionables_import_info_list"), weight = 5 ),
                            MenuItem("Dashboard", reverse("mantis_dashboard:index"), weight = 5 ),

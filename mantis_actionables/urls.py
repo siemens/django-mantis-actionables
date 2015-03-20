@@ -23,22 +23,22 @@ from .views import *
 urlpatterns = patterns(
     'mantis_actionables.views',
 
-    url(r'^all_imports/$',
+    url(r'^indicators_by_source/$',
         SourceInfoView.as_view(),
         name='actionables_all_imports'),
 
     url(r'^unified_search/$', 'unified_search', name='actionables_unified_search'),
-    url(r'^all_status_infos/$',
+    url(r'^indicator_status_infos/$',
         StatusInfoView.as_view(), name='actionables_all_status_infos'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
-    url(r'^tbl_data/all_imports$',
+    url(r'^tbl_data/indicators_by_source$',
         SingeltonObservablesWithSourceOneTableDataProvider.as_view(),
         name=SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name()),
 
     url(r'^tbl_data/unified_search$',
         UnifiedSearchSourceDataProvider.as_view(),
         name=UnifiedSearchSourceDataProvider.qualified_view_name()),
-    url(r'^tbl_data/all_status_infos$',
+    url(r'^tbl_data/indicator_status_infos$',
         SingletonObservablesWithStatusOneTableDataProvider.as_view(),
         name=SingletonObservablesWithStatusOneTableDataProvider.qualified_view_name()),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/?$', ActionablesContextView.as_view(), name='actionables_context_view'),

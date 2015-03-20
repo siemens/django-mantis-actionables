@@ -44,12 +44,12 @@
 		tables[tbl_key] = $(this).DataTable({
             "autoWidth": true,
             "columnDefs" : colDef,
-            "searching": false,
+            "searching": true,
 		    "processing": false,
 		    "serverSide": true,
 		    "stripeClasses": ["grp-row grp-row-odd", "grp-row grp-row-even"],
 		    "order": [[0,"desc"]],
-            "search" : {"search" : "xyz"},
+            "search" : {"search" : initial_filter},
 		    "ajax": {
 			url: view_url,
 			type: 'POST',
