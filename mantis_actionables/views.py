@@ -240,7 +240,7 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_spec = None
 
-    table_spec_map = None
+    table_spec_map = {}
 
     table_rows = 10
 
@@ -248,9 +248,9 @@ class BasicTableDataProvider(BasicJSONView):
 
     view_name = ""
 
-    @property
-    def qualified_view_name(self):
-        return "actionables_dataprovider_%s" % view_name
+    @classmethod
+    def qualified_view_name(cls):
+        return "actionables_dataprovider_%s" % cls.view_name
 
     curr_cols = None
     def get_curr_cols(self):
@@ -323,6 +323,8 @@ class BasicTableDataProvider(BasicJSONView):
              kwargs['table_spec_map'] = self.table_spec_map
 
 
+
+             print kwargs
 
              q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, paginate_at = self.table_rows, **kwargs)
 
@@ -599,8 +601,10 @@ def all_imports(request):
     content_dict = {
         'title' : 'Indicators and their sources',
         'tables' : [],
-        'view' : name
+        'data_view_name' : SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name
     }
+
+    print "%s" %  SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name()
 
     content_dict['tables'].append(('All',COLS[name]['all']))
     return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
