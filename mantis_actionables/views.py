@@ -593,12 +593,12 @@ class BasicDatatableView(BasicTemplateView):
     def get_context_data(self, **kwargs):
         context = super(BasicDatatableView, self).get_context_data(**kwargs)
         context.update(self.content_dict)
+        context['data_view_name'] = self.data_provider_class.qualified_view_name
+        context['title'] = self.title
+        context['tables'] = []
 
         for (i0,i1) in self.table_spec:
             context['tables'].append((i0,COLS[i1]["all"]))
-
-        print "Tables"
-        print context['tables']
 
         return context
 
@@ -628,11 +628,8 @@ class SourceInfoView(BasicDatatableView):
 
     template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
 
-    content_dict = {
-        'title' : 'Indicators and their sources',
-        'tables' : [],
-        'data_view_name' : SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name
-    }
+
+    title = 'Indiators and their sources'
 
     table_spec = [('All', 'all_imports')]
 
