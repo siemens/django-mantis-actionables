@@ -490,7 +490,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
     top_level_node = graph.node[top_level_iobj_pk]
 
-    print "Treating %s:%s" % (top_level_node['identifier_ns'],top_level_node['identifier_uid'])
+    logger.info("Treating %s:%s" % (top_level_node['identifier_ns'],top_level_node['identifier_uid']))
 
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
@@ -524,7 +524,12 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         value = result.get('actionable_info','')
 
         if not (type and value):
-            logger.error("Incomplete actionable information %s/%s for value %s" % (type,subtype,value))
+            logger.error("Incomplete actionable information %s/%s for value %s in "
+                         "top-level pk %s (object pk %s)" % (type,
+                                                             subtype,
+                                                             value,
+                                                             top_level_iobj_pk,
+                                                             iobject_pk))
             continue
 
         src_meta_data = createSourceMetaData(top_level_node=graph.node[top_level_iobj_pk])
@@ -669,7 +674,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     for item in queries:
         query |= item
     top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                                create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test')
+                                                create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test').exclude(latest_of__isnull=True)
     top_level_iobjs = list(top_level_iobjs.filter(query))
     result = import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
 
