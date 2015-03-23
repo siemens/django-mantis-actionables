@@ -39,7 +39,7 @@ from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.forms import InvestigationForm
 from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
 from dingos.views import InfoObjectExportsView
-from dingos.models import IdentifierNameSpace
+from dingos.models import IdentifierNameSpace,InfoObject, vIO2FValue
 from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
@@ -88,12 +88,14 @@ def datatable_query(post, paginate_at, **kwargs):
 
     q = config['base'].objects
 
+    base_filters = config.get('filters',[])
+
     cols = dict((x, y[0]) for x, y in cols.items())
 
     display_cols = dict((x, y[0]) for x, y in display_cols.items())
 
     # extend query by kwargs['filter']
-    for filter in kwargs.pop('filter',[]):
+    for filter in base_filters:
         q = q.filter(**filter)
 
     q = q.values_list(*(cols.values()))
@@ -227,8 +229,27 @@ class BasicTableDataProvider(BasicJSONView):
 
     @classmethod
     def init_data(cls):
-        #should be provided to init the column dicts
-        pass
+        for table_name in cls.table_spec:
+            table_name = table_name.lower().replace(' ','_')
+            this_table_spec = cls.table_spec.get(table_name)
+            cls.curr_cols = cls.get_cols_dict(table_name)
+            if not cls.curr_cols:
+                #init default column_dicts
+                query_columns = cls.curr_cols.setdefault('query_columns',{})
+                display_columns = cls.curr_cols.setdefault('display_columns',{})
+                query_config = cls.curr_cols.setdefault('query_config',{})
+
+                query_config['base'] = this_table_spec['model']
+                query_config['filters'] = this_table_spec.get('filters',[])
+
+                COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
+                COLS_TO_DISPLAY = this_table_spec['COMMON_BASE'] + this_table_spec['DISPLAY_ONLY']
+
+                this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
+
+                fillColDict(query_columns,COLS_TO_QUERY)
+                fillColDict(display_columns,COLS_TO_DISPLAY)
+
 
     def postprocess(self,table_name,res,q):
         #insert fetched rows into result
@@ -293,7 +314,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
 
-    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = {
+    ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
         'COMMON_BASE' : [
                 ('sources__tlp','TLP','0'), #0
@@ -316,35 +337,16 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                              ]
     }
 
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
 
 
     # TODO only ten works at the moment -- there is some dependency on 10
     # in the calculation of the pagination
     table_rows = 10
+
     @classmethod
-    def init_data(cls):
-        for table_name in cls.table_spec:
-            table_name = table_name.lower().replace(' ','_')
-            this_table_spec = cls.table_spec.get(table_name)
-            cls.curr_cols = cls.get_cols_dict(table_name)
-            if not cls.curr_cols:
-                #init default column_dicts
-                query_columns = cls.curr_cols.setdefault('query_columns',{})
-                display_columns = cls.curr_cols.setdefault('display_columns',{})
-                query_config = cls.curr_cols.setdefault('query_config',{})
-
-                query_config['base'] = this_table_spec['model']
-
-                COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
-                COLS_TO_DISPLAY = this_table_spec['COMMON_BASE'] + this_table_spec['DISPLAY_ONLY']
-
-                this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
-
-                fillColDict(query_columns,COLS_TO_QUERY)
-                fillColDict(display_columns,COLS_TO_DISPLAY)
-
-    def postprocess(self,table_name,res,q):
-        offset = self.table_spec[table_name]['offset']
+    def ALL_IMPORTS_POSTPROCESSOR(cls,table_spec,res,q):
+        offset = table_spec['offset']
 
         for row in q:
             row = list(row)
@@ -360,10 +362,12 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                                                                  row[offset+4])
                 row = row[:-4]
 
-            #print row[1]
-            #row[1] = datetime.datetime.date(row[1]).strftime('%Y-%m-%d %H:%M:%S %Z')
-            #print "> %s" % row[1]
             res['data'].append(row)
+
+
+    def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        return self.ALL_IMPORTS_POSTPROCESSOR(table_spec,res,q)
 
         #treat filters
         # if res['draw'] == 1:
@@ -384,46 +388,81 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
     view_name = "unified_search"
 
-    table_spec_map = {'io2vf' : {
-        'basis': 'vIO2FValue',
-        'name': 'io2vf',
-        'types' : [],
-        'show_type_column': False
-         },
-     'actionables' : {
-        'basis': 'vIO2FValue',
-        'name': 'actionables',
-        'types' : [],
-        'show_type_column': False
-    }}
+    table_spec =  {}
+
+    TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_TABLE_SPEC
 
 
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('unified_search',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+    #COLS_TO_DISPLAY = [
+    #            ('iobject_identifier_uri','Namespace','0'),
+    #            ('iobject_identifier_uid','Identifier','0'),
+    #            ('iobject_name','Name','0'),
+    #            ('term','Term','0'),
+    #            ('attribute','Attribute','0'),
+    #            ('value','Value','1'),
+    #        ]
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
+    TABLE_NAME_DINGOS_VALUES = 'General Value Search'
+
+    DINGOS_VALUES_TABLE_SPEC = {
+        'model' : vIO2FValue,
+        'filters' : [{'iobject__latest_of__isnull':False}],
+        'COMMON_BASE' : [
                 ('iobject_identifier_uri','Namespace','0'),
                 ('iobject_identifier_uid','Identifier','0'),
                 ('iobject_name','Name','0'),
                 ('term','Term','0'),
                 ('attribute','Attribute','0'),
                 ('value','Value','1'),
-            ]
+            ],
+        'QUERY_ONLY' : [('iobject_id','XXX',0)],
 
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
+        'DISPLAY_ONLY' :  []
+
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_DINGOS_VALUES)] = DINGOS_VALUES_TABLE_SPEC
+
+    TABLE_NAME_INFOBJECT_NAMES = 'InfoObject Names'
+
+    INFOOBJECT_NAMES_TABLE_SPEC = {
+        'model' : InfoObject,
+        'filters' : [{'latest_of__isnull':False}],
+        'COMMON_BASE' : [
+                ('identifier__namespace__uri','Namespace','0'),
+                ('identifier__uid','Identifier','0'),
+                ('name','Name','1'),
+            ],
+        'QUERY_ONLY' : [('id','XXX',0)],
+
+        'DISPLAY_ONLY' :  []
+
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_INFOBJECT_NAMES)] = INFOOBJECT_NAMES_TABLE_SPEC
 
 
     def postprocess(self,table_name,res,q):
-        for row in q:
-            row = list(row)
-            res['data'].append(row)
+        table_spec = self.table_spec[table_name]
+        if table_name == table_name_slug(self.TABLE_NAME_ALL_IMPORTS):
+            return SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_POSTPROCESSOR(table_spec,res,q)
+        elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
+            offset = table_spec['offset']
+            for row in q:
+                row = list(row)
+                row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
+                                                                 row[2])
+                res['data'].append(row)
+        elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_NAMES):
+            offset = table_spec['offset']
+            for row in q:
+                row = list(row)
+                row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
+                                                                 row[2])
+                res['data'].append(row)
+
 
 
     table_rows = 10
@@ -482,6 +521,7 @@ class BasicDatatableView(BasicTemplateView):
     initial_filter = ''
     data_provider_class = None
 
+    datatables_dom = "tip"
 
     def get(self, request, *args, **kwargs):
         self.data_provider_class.init_data()
@@ -495,6 +535,9 @@ class BasicDatatableView(BasicTemplateView):
         context['title'] = self.title
         context['initial_filter'] = self.initial_filter
         context['tables'] = []
+
+        context['datatables_dom'] = self.datatables_dom
+
 
         for table_name in self.table_spec:
             table_name_slug = table_name.lower().replace(' ','_')
@@ -531,31 +574,25 @@ class StatusInfoView(BasicDatatableView):
     table_spec = [data_provider_class.TABLE_NAME_ALL_STATI]
 
 
-
-def unified_search(request):
-
+class UnifiedSearch(BasicDatatableView):
 
 
-    UnifiedSearchSourceDataProvider.init_data()
-    name = 'unified_search'
-    content_dict = {
-        'title' : 'Unified search',
-        'tables' : [],
-        'data_view_name' : UnifiedSearchSourceDataProvider.qualified_view_name
-    }
-
-    unified_search_tables = UnifiedSearchSourceDataProvider.table_spec_map
-
-
-    for id,table_info in unified_search_tables.items():
-        if not table_info['show_type_column']:
-            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
+    @property
+    def initial_filter(self):
+        if self.request.GET.get('search_term',False):
+            return self.request.GET.get('search_term')
         else:
-            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
+            return self.kwargs.get('search_term','')
+    data_provider_class = UnifiedSearchSourceDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
 
 
-    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+    title = 'Unified Search'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS,
+                  data_provider_class.TABLE_NAME_DINGOS_VALUES,
+data_provider_class.TABLE_NAME_INFOBJECT_NAMES]
 
 
 

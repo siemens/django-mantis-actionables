@@ -27,7 +27,9 @@ urlpatterns = patterns(
         SourceInfoView.as_view(),
         name='actionables_all_imports'),
 
-    url(r'^unified_search/$', 'unified_search', name='actionables_unified_search'),
+    url(r'^unified_search/(?P<search_term>.*)$',
+        UnifiedSearch.as_view(),
+        name='actionables_unified_search'),
     url(r'^indicator_status_infos/$',
         StatusInfoView.as_view(), name='actionables_all_status_infos'),
     #url(r'^refresh/$', 'refresh', name='refresh'),

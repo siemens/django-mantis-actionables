@@ -50,6 +50,7 @@
 		    "stripeClasses": ["grp-row grp-row-odd", "grp-row grp-row-even"],
 		    "order": [[0,"desc"]],
             "search" : {"search" : initial_filter},
+            "dom" : datatables_dom,
 		    "ajax": {
 			url: view_url,
 			type: 'POST',
