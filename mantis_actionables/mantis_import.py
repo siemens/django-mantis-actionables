@@ -676,6 +676,7 @@ def process_STIX_Reports(imported_since, imported_until=None):
     top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
                                                 create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test').exclude(latest_of__isnull=True)
     top_level_iobjs = list(top_level_iobjs.filter(query))
+    logger.info("Importing timespan %s to %s" % (imported_since,imported_until))
     result = import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
 
     end_time = timezone.now()

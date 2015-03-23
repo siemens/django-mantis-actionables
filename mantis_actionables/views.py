@@ -17,6 +17,7 @@
 
 # -*- coding: utf-8 -*-
 
+import logging
 
 import datetime
 from querystring_parser import parser
@@ -53,6 +54,9 @@ from .forms import ContextEditForm
 from dingos.models import vIO2FValue
 
 from .tasks import actionable_tag_bulk_action
+
+logger = logging.getLogger(__name__)
+
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
@@ -136,8 +140,6 @@ def datatable_query(post, paginate_at, **kwargs):
     sv = str(sv.get('value', '')).strip()
     if sv != '':
         for n,c in display_cols.iteritems():
-            print n
-            print c
 
             if post_dict['columns'][n]['searchable'] == "true":
                 col_search.append({
@@ -210,6 +212,12 @@ class BasicTableDataProvider(BasicJSONView):
         provider_specific_dict = COLS.setdefault(cls.__name__,{})
         return provider_specific_dict.setdefault(table_name,{})
 
+
+    def post(self, request, *args, **kwargs):
+        POST = request.POST
+        table_name = POST.get('table_type').replace(' ','_')
+        logger.info("Received data query from user %s for table %s" % (request.user,table_name))
+        return super(BasicTableDataProvider,self).post(request,*args,**kwargs)
 
     view_name = ""
 
@@ -298,9 +306,12 @@ class BasicTableDataProvider(BasicJSONView):
                 'query_config' : config_info['query_config'],
                 }
 
+        table_name = POST.get('table_type').replace(' ','_')
+        logger.info("About to start database query for user %s for table %s" % (self.request.user,table_name))
         q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
-
+        logger.info("Finished database query for user %s for table %s" % (self.request.user,table_name))
         self.postprocess(table_name,res,q)
+        logger.info("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
         return res
 
 def table_name_slug(table_name):
@@ -709,14 +720,11 @@ class ActionablesContextView(BasicFilterView):
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
                                                      'actionable_tags__actionable_tag__tag__name')
-            print tag_infos
-            print self.object_list
 
             for pk,context_name,tag_name in tag_infos:
                 if context_name == self.curr_context_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk)
 
-            print self.object2tag_map
 
         if object:
             return sorted(self.object2tag_map.get(object.pk,[]))
