@@ -66,15 +66,15 @@
 
          </thead>
         <tbody>
-         {% for status in stati %}
+         {% for status2x in stati2x %}
          <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
-           <td class="w-1 nowrap middle">{{ status.actionable_thru.all.0.timestamp }}</td>
-             <td class="w-1 nowrap middle">{{ status.actionable_thru.all.0.action.comment }}</td>
-           <td class="w-1 nowrap middle">{{ status.actionable_thru.all.0.active }}</td>
-           <td class="w-1 nowrap middle">{{ status.best_processing | lookup_status_processing}}</td>
-             <td class="w-1 nowrap middle">{{ status.most_permissive_tlp | lookup_status_tlp}}</td>
-             <td class="w-1 nowrap middle">{{ status.most_restrictive_tlp | lookup_status_tlp}}</td>
-             <td class="w-1 nowrap middle">{{ status.max_confidence | lookup_status_confidence}}</td>
+           <td class="w-1 nowrap middle">{{ status2x.timestamp }}</td>
+             <td class="w-1 nowrap middle">{{ status2x.action.comment }}</td>
+           <td class="w-1 nowrap middle">{{ status2x.active }}</td>
+           <td class="w-1 nowrap middle">{{ status2x.status.best_processing | lookup_status_processing}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.most_permissive_tlp | lookup_status_tlp}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.most_restrictive_tlp | lookup_status_tlp}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.max_confidence | lookup_status_confidence}}</td>
 
          </tr>
          {% endfor %}

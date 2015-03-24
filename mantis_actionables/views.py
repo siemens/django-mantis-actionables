@@ -45,7 +45,7 @@ from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 from . import MANTIS_ACTIONABLES_DASHBOARD_CONTENTS
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
@@ -912,9 +912,12 @@ class SingletonObservableDetailView(BasicDetailView):
             return self.stati_list
         else:
 
-            self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
-                                                    actionable_thru__content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
-        context['stati'] = self.stati_list
+
+            self.stati_list = Status2X.objects.filter(object_id=self.kwargs['pk'],
+                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
+
+            #self.stati_list = Status.objects.filter(
+        context['stati2x'] = self.stati_list
 
         if self.sources_list:
 
