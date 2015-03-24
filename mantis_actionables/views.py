@@ -94,6 +94,8 @@ def datatable_query(post, paginate_at, **kwargs):
 
     base_filters = config.get('filters',[])
 
+    count =config.get('count',True)
+
     cols = dict((x, y[0]) for x, y in cols.items())
 
     display_cols = dict((x, y[0]) for x, y in display_cols.items())
@@ -104,8 +106,11 @@ def datatable_query(post, paginate_at, **kwargs):
 
     q = q.values_list(*(cols.values()))
     #sources__id for join on sources table
-    q_count_all = q.count()
 
+    if count:
+        q_count_all = q.count()
+    else:
+        q_count_all = -1
 
     # Treat the filter values (WHERE clause)
     col_filters = []
@@ -175,7 +180,10 @@ def datatable_query(post, paginate_at, **kwargs):
     if order_cols:
         q = q.order_by(*order_cols)
 
-    q_count_filtered = q.count()
+    if True:
+        q_count_filtered = q.count()
+    else:
+        q_count_filtered = 100
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, paginate_at)
     if length<-1:
@@ -251,6 +259,7 @@ class BasicTableDataProvider(BasicJSONView):
 
                 query_config['base'] = this_table_spec['model']
                 query_config['filters'] = this_table_spec.get('filters',[])
+                query_config['count'] = this_table_spec.get('count',True)
 
                 COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
                 COLS_TO_DISPLAY = this_table_spec['COMMON_BASE'] + this_table_spec['DISPLAY_ONLY']
@@ -331,6 +340,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
+        'count': False,
         'COMMON_BASE' : [
 
                 ('sources__timestamp','Source TS','0'), #0
@@ -431,6 +441,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
     DINGOS_VALUES_TABLE_SPEC = {
         'model' : vIO2FValue,
         'filters' : [{'iobject__latest_of__isnull':False}],
+        'count' : False,
         'COMMON_BASE' : [
                 ('iobject_identifier_uri','Namespace','0'),
                 ('iobject_identifier_uid','Identifier','0'),
@@ -452,6 +463,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
     INFOOBJECT_NAMES_TABLE_SPEC = {
         'model' : InfoObject,
         'filters' : [{'latest_of__isnull':False}],
+        'count': False,
         'COMMON_BASE' : [
                 ('identifier__namespace__uri','Namespace','0'),
                 ('identifier__uid','Identifier','0'),
@@ -499,8 +511,9 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
     ALL_STATI_TABLE_SPEC = {
         'model' : SingletonObservable,
         'filters' : [{
-        'status_thru__active' : True
+                  'status_thru__active' : True
                 }],
+        'count': False,
         'COMMON_BASE' : [
                 ('status_thru__timestamp','Status Timestamp','0')  , #0
                 ('status_thru__status__most_permissive_tlp','lightest TLP','0')  , #1
