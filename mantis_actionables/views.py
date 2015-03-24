@@ -175,7 +175,6 @@ def datatable_query(post, paginate_at, **kwargs):
     if order_cols:
         q = q.order_by(*order_cols)
 
-
     q_count_filtered = q.count()
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, paginate_at)
@@ -185,6 +184,10 @@ def datatable_query(post, paginate_at, **kwargs):
     if start<0:
         start = 0
     if length>0:
+        print "Slice"
+        print start
+        print length
+
         q = q[start:start+length]
         params.append(length)
         params.append(start)
@@ -339,8 +342,11 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                 ('sources__related_stix_entities__essence','Context Info','0'), #6
             ],
         'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
-                             ('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
-                             ('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
+
+                             #('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
+                             #('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
+                             ('sources__top_level_iobject__name','Report Name','0'), #1
+                             ('sources__top_level_iobject_id','Report InfoObject PK','0'), #2
                              ('sources__import_info__namespace__uri','Report Source','0'), #3
                              ('sources__import_info__name','Report Name','0'), #4
                              ('sources__import_info_id','Report Import Info PK','0'), #5,
