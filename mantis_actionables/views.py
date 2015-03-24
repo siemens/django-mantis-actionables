@@ -17,9 +17,12 @@
 
 # -*- coding: utf-8 -*-
 
+import logging
 
 import datetime
 from querystring_parser import parser
+
+from django.core.urlresolvers import reverse
 
 from django.shortcuts import render_to_response
 from django.template import RequestContext
@@ -28,20 +31,31 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
+from django.http import HttpResponseRedirect
+from django.core.urlresolvers import reverse
 
+from django.contrib import messages
+from taggit.models import Tag
 from dingos import DINGOS_TEMPLATE_FAMILY
-from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView
+from dingos.forms import InvestigationForm
+from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
 from dingos.views import InfoObjectExportsView
-from dingos.models import IdentifierNameSpace
-from dingos.core.utilities import listify
+from dingos.models import IdentifierNameSpace,InfoObject, vIO2FValue
+from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
-from . import DASHBOARD_CONTENTS
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context
-from .filter import ActionablesContextFilter
+from . import MANTIS_ACTIONABLES_DASHBOARD_CONTENTS
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
+from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
 from .mantis_import import singleton_observable_types
 from .tasks import async_export_to_actionables
+from .forms import ContextEditForm
 
+from dingos.models import vIO2FValue
+
+from .tasks import actionable_tag_bulk_action
+
+logger = logging.getLogger(__name__)
 
 #content_type_id
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
@@ -59,62 +73,44 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def datatable_query(table_name, post, paginate_at, **kwargs):
+def datatable_query(post, paginate_at, **kwargs):
+
+
     post_dict = parser.parse(str(post.urlencode()))
+
 
 
     # Collect prepared statement parameters in here
     params = []
 
-    table_spec = None
 
-    try:
-        table_spec = kwargs.pop('table_spec')
-    except:
-        pass
+    cols = kwargs.pop('query_columns')
 
-    if not table_spec:
-        table_spec = DASHBOARD_CONTENTS[table_name]
+    display_cols = kwargs.pop('display_columns')
 
-    cols = kwargs.pop('cols')
+    config = kwargs.pop('query_config')
 
-    if not table_spec['show_type_column']:
-        cols = cols['cut']
-    else:
-        cols = cols['all']
+    q = config['base'].objects
+
+    base_filters = config.get('filters',[])
+
+    count =config.get('count',True)
 
     cols = dict((x, y[0]) for x, y in cols.items())
 
-    # Base query
-    if table_spec['basis'] == 'SingletonObservable':
-        base = SingletonObservable.objects
-        types = table_spec['types']
+    display_cols = dict((x, y[0]) for x, y in display_cols.items())
 
-        type_ids = []
-        if isinstance(types,str):
-            types = [types]
-        for type in types:
-            try:
-                type_obj,created = SingletonObservableType.cached_objects.get_or_create(name=type)
-                type_ids.append(type_obj.pk) #singleton_observable_types[type])
-            except KeyError:
-                continue
-        q = base
+    # extend query by kwargs['filter']
+    for filter in base_filters:
+        q = q.filter(**filter)
 
-        if type_ids:
-            q = q.filter(type_id__in=type_ids)
+    q = q.values_list(*(cols.values()))
+    #sources__id for join on sources table
 
-        # extend query by kwargs['select_related']
-        q = q.select_related(*kwargs.pop('select_related',[]))
-
-        # extend query by kwargs['filter']
-        for filter in kwargs.pop('filter',[]):
-            q = q.filter(**filter)
-
-        q = q.values_list(*(cols.values()))
-        #sources__id for join on sources table
+    if count:
         q_count_all = q.count()
-
+    else:
+        q_count_all = -1
 
     # Treat the filter values (WHERE clause)
     col_filters = []
@@ -148,7 +144,8 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     sv = post_dict.get('search', {})
     sv = str(sv.get('value', '')).strip()
     if sv != '':
-        for n,c in cols.iteritems():
+        for n,c in display_cols.iteritems():
+
             if post_dict['columns'][n]['searchable'] == "true":
                 col_search.append({
                     c + '__contains' : sv
@@ -183,9 +180,10 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     if order_cols:
         q = q.order_by(*order_cols)
 
-
-
-    q_count_filtered = q.count()
+    if True:
+        q_count_filtered = q.count()
+    else:
+        q_count_filtered = 100
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, paginate_at)
     if length<-1:
@@ -194,11 +192,15 @@ def datatable_query(table_name, post, paginate_at, **kwargs):
     if start<0:
         start = 0
     if length>0:
+        print "Slice"
+        print start
+        print length
+
         q = q[start:start+length]
         params.append(length)
         params.append(start)
 
-
+    #return (q,-1,-1)
     return (q,q_count_all,q_count_filtered)
 
 
@@ -209,18 +211,64 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_spec = None
 
+    table_spec_map = {}
+
     table_rows = 10
 
+    @classmethod
+    def get_cols_dict(cls,table_name):
+
+        table_name = table_name.lower().replace(' ','_')
+        provider_specific_dict = COLS.setdefault(cls.__name__,{})
+        return provider_specific_dict.setdefault(table_name,{})
+
+
+    def post(self, request, *args, **kwargs):
+        POST = request.POST
+        table_name = POST.get('table_type').replace(' ','_')
+        logger.info("Received data query from user %s for table %s" % (request.user,table_name))
+        return super(BasicTableDataProvider,self).post(request,*args,**kwargs)
+
+    view_name = ""
+
+    @classmethod
+    def qualified_view_name(cls):
+        return "actionables_dataprovider_%s" % cls.view_name
+
     curr_cols = None
-    def get_curr_cols(self):
+
+    def get_curr_cols(self,table_name):
         if self.curr_cols == None:
             self.init_data()
-        return self.curr_cols
+
+        table_name = table_name.lower().replace(' ','_')
+
+        return COLS[self.__class__.__name__][table_name]
 
     @classmethod
     def init_data(cls):
-        #should be provided to init the column dicts
-        pass
+        for table_name in cls.table_spec:
+            table_name = table_name.lower().replace(' ','_')
+            this_table_spec = cls.table_spec.get(table_name)
+            cls.curr_cols = cls.get_cols_dict(table_name)
+            if not cls.curr_cols:
+                #init default column_dicts
+                query_columns = cls.curr_cols.setdefault('query_columns',{})
+                display_columns = cls.curr_cols.setdefault('display_columns',{})
+                query_config = cls.curr_cols.setdefault('query_config',{})
+
+                query_config['base'] = this_table_spec['model']
+                query_config['filters'] = this_table_spec.get('filters',[])
+                query_config['count'] = this_table_spec.get('count',True)
+
+                COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
+                COLS_TO_DISPLAY = this_table_spec['COMMON_BASE'] + this_table_spec['DISPLAY_ONLY']
+
+                this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
+
+                fillColDict(query_columns,COLS_TO_QUERY)
+                fillColDict(display_columns,COLS_TO_DISPLAY)
+
 
     def postprocess(self,table_name,res,q):
         #insert fetched rows into result
@@ -238,7 +286,8 @@ class BasicTableDataProvider(BasicJSONView):
     @property
     def returned_obj(self):
         POST = self.request.POST.copy()
-
+        if not POST:
+            POST = self.request.GET.copy()
         draw_val = safe_cast(POST.get('draw', 0), int, 0)
         res = {
             'draw': draw_val,
@@ -258,64 +307,99 @@ class BasicTableDataProvider(BasicJSONView):
 
         table_name = POST.get('table_type').replace(' ','_')
 
-        kwargs =  {}
-        if table_name in DASHBOARD_CONTENTS.keys():
-            # Build the query for the data, and fetch that stuff
-            kwargs = {
-                'cols' : self.get_curr_cols(),
+
+        config_info = self.get_curr_cols(table_name)
+
+        kwargs = {
+                'query_columns' : config_info['query_columns'],
+                'display_columns' : config_info.get('display_columns',config_info['query_columns']),
                 'filter' : self.filter,
-                'select_related' : self.select_related
-            }
-        elif self.table_spec:
-             kwargs = {
-                'cols' : self.get_curr_cols(),
-                'filter' : self.filter,
-                'select_related' : self.select_related
-             }
+                'query_config' : config_info['query_config'],
+                }
 
-        if kwargs:
-             kwargs['table_spec'] = self.table_spec
+        table_name = POST.get('table_type').replace(' ','_')
+        logger.info("About to start database query for user %s for table %s" % (self.request.user,table_name))
+        q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
+        q = list(q)
+        logger.info("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
 
-             q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(table_name, POST, paginate_at = self.table_rows, **kwargs)
+        self.postprocess(table_name,res,q)
+        logger.info("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
+        return res
 
-             self.postprocess(table_name,res,q)
-             return res
+def table_name_slug(table_name):
+    return table_name.lower().replace(' ','_')
 
-class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
+class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider):
+
+    view_name = "singletons_with_source_one_table"
+
+    table_spec =  {}
+
+    TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
+
+    ALL_IMPORTS_TABLE_SPEC = {
+        'model' : SingletonObservable,
+        'count': False,
+        'COMMON_BASE' : [
+
+                ('sources__timestamp','Source TS','0'), #0
+                ('sources__tlp','TLP','0'), #1
+                ('type__name','Type','1'), #2
+                ('subtype__name','Subtype','1'), #3
+                ('value','Value','1'), #4
+                ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
+                ('sources__related_stix_entities__essence','Context Info','0'), #6
+            ],
+        'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
+
+                             #('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
+                             #('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
+                             ('sources__top_level_iobject__name','Report Name','0'), #1
+                             ('sources__top_level_iobject_id','Report InfoObject PK','0'), #2
+                             ('sources__import_info__namespace__uri','Report Source','0'), #3
+                             ('sources__import_info__name','Report Name','0'), #4
+                             ('sources__import_info_id','Report Import Info PK','0'), #5,
+                             ('id','Singleton Observable PK','0') #6
+                            ],
+        'DISPLAY_ONLY' :  [('','Report Source','0'),
+                             ('','Report Name','0'),
+                             ]
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
+
+
+    # TODO only ten works at the moment -- there is some dependency on 10
+    # in the calculation of the pagination
+    table_rows = 10
+
     @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('standard',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+    def ALL_IMPORTS_POSTPROCESSOR(cls,table_spec,res,q):
+        offset = table_spec['offset']
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Imported into Mantis Actionables','0'),
-                ('value','Value','1'),
-                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-                ('sources__top_level_iobject__name','STIX Name','0')
-            ]
-
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = [
-                (2,('subtype__name','Type','1')),]
-
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
-
-    def postprocess(self,table_name,res,q):
         for row in q:
             row = list(row)
-            row[0] = Source.TLP_COLOR_CSS[row[0]]
-            #print row[1]
-            #row[1] = datetime.datetime.date(row[1]).strftime('%Y-%m-%d %H:%M:%S %Z')
-            #print "> %s" % row[1]
+
+            row[1] = Source.TLP_COLOR_CSS.get(row[1],"ERROR")
+            if row[offset+0]:
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
+                                                                 row[offset+1])
+            else:
+                row[offset+0] = row[offset+3]
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+5]}),
+                                                                 row[offset+4])
+
+            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+6]}),
+                                                                 row[4])
+
+            row = row[:-5]
             res['data'].append(row)
+
+
+    def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        return self.ALL_IMPORTS_POSTPROCESSOR(table_spec,res,q)
 
         #treat filters
         # if res['draw'] == 1:
@@ -332,179 +416,229 @@ class SingletonObservablesWithSourceDataProvider(BasicTableDataProvider):
         #             res['cols'][table_name + '_ns_filter'].append({ns : ns})
         #
 
-class SingeltonObservablesWithSourceOneTableDataProvider(SingletonObservablesWithSourceDataProvider):
-    table_spec =  {
-        'basis': 'SingletonObservable',
-        'name': 'All Imports',
-        'types' : [],
-        'show_type_column': True
+
+
+class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
+    view_name = "unified_search"
+
+    table_spec =  {}
+
+    TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_TABLE_SPEC
+
+
+    #COLS_TO_DISPLAY = [
+    #            ('iobject_identifier_uri','Namespace','0'),
+    #            ('iobject_identifier_uid','Identifier','0'),
+    #            ('iobject_name','Name','0'),
+    #            ('term','Term','0'),
+    #            ('attribute','Attribute','0'),
+    #            ('value','Value','1'),
+    #        ]
+
+    TABLE_NAME_DINGOS_VALUES = 'General Value Search'
+
+    DINGOS_VALUES_TABLE_SPEC = {
+        'model' : vIO2FValue,
+        'filters' : [{'iobject__latest_of__isnull':False}],
+        'count' : False,
+        'COMMON_BASE' : [
+                ('iobject_identifier_uri','Namespace','0'),
+                ('iobject_identifier_uid','Identifier','0'),
+                ('iobject_name','Name','0'),
+                ('term','Term','0'),
+                ('attribute','Attribute','0'),
+                ('value','Value','1'),
+            ],
+        'QUERY_ONLY' : [('iobject_id','XXX',0)],
+
+        'DISPLAY_ONLY' :  []
+
     }
 
-    # TODO only ten works at the moment -- there is some dependency on 10
-    # in the calculation of the pagination
+    table_spec[table_name_slug(TABLE_NAME_DINGOS_VALUES)] = DINGOS_VALUES_TABLE_SPEC
+
+    TABLE_NAME_INFOBJECT_NAMES = 'InfoObject Names'
+
+    INFOOBJECT_NAMES_TABLE_SPEC = {
+        'model' : InfoObject,
+        'filters' : [{'latest_of__isnull':False}],
+        'count': False,
+        'COMMON_BASE' : [
+                ('identifier__namespace__uri','Namespace','0'),
+                ('identifier__uid','Identifier','0'),
+                ('name','Name','1'),
+            ],
+        'QUERY_ONLY' : [('id','XXX',0)],
+
+        'DISPLAY_ONLY' :  []
+
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_INFOBJECT_NAMES)] = INFOOBJECT_NAMES_TABLE_SPEC
+
+
+    def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        if table_name == table_name_slug(self.TABLE_NAME_ALL_IMPORTS):
+            return SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_POSTPROCESSOR(table_spec,res,q)
+        elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
+            offset = table_spec['offset']
+            for row in q:
+                row = list(row)
+                row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
+                                                                 row[2])
+                res['data'].append(row)
+        elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_NAMES):
+            offset = table_spec['offset']
+            for row in q:
+                row = list(row)
+                row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
+                                                                 row[2])
+                res['data'].append(row)
+
+
+
     table_rows = 10
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('all_imports',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
-
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('sources__tlp','TLP','0'),
-                ('sources__timestamp','Imported into MANTIS Actionables','0'),
-                ('type__name','Type','0'),
-                ('subtype__name','Subtype','0'),
-                ('value','Value','1'),
-                ('sources__top_level_iobject__identifier__namespace__uri','STIX Namespace','0'),
-                ('sources__top_level_iobject__name','STIX Name','0')
-            ]
-
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = []
-
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
 
 
+class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider):
 
-class SingletonObservablesWithStatusDataProvider(BasicTableDataProvider):
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('status',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+    view_name = "singletons_with_status"
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('value','Value','1'),
-                ('actionable_tags_cache','Tags','1')
-            ]
+    TABLE_NAME_ALL_STATI = "Status information for indicators"
 
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = [
-                (1,('subtype__name','Type','1')),]
+    ALL_STATI_TABLE_SPEC = {
+        'model' : SingletonObservable,
+        'filters' : [{
+                  'status_thru__active' : True
+                }],
+        'count': False,
+        'COMMON_BASE' : [
+                ('status_thru__timestamp','Status Timestamp','0')  , #0
+                ('status_thru__status__most_permissive_tlp','lightest TLP','0')  , #1
+                ('status_thru__status__most_restrictive_tlp','darkest TLP','0')  , #2
+                ('status_thru__status__max_confidence','Max confidence','0'), #3
+                ('status_thru__status__best_processing','Processing','0'), #4
+                ('status_thru__status__kill_chain_phases','Kill Chain','0'), #5
+                ('type__name','Type','1'), #6
+                ('subtype__name','Subtype','1'), #7
+                ('value','Value','1'), #8
+                ('actionable_tags_cache','Tags','1'), #9
 
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
 
-    #filter = [{
-    #    'status_thru__active' : True
-    #}]
-    #select_related = ['status_thru__status']
+            ],
+        'QUERY_ONLY' : [('id','XXX',0)],
+        'DISPLAY_ONLY' :  []
 
-class SingletonObservablesWithStatusOneTableDataProvider(SingletonObservablesWithStatusDataProvider):
-    table_spec =  {
-    'basis': 'SingletonObservable',
-    'name': 'Indicators and their status',
-    'types' : [],
-    'show_type_column': True
     }
 
+    table_spec= {table_name_slug(TABLE_NAME_ALL_STATI):ALL_STATI_TABLE_SPEC}
 
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = COLS.setdefault('all_status_infos',{})
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_cut = cls.curr_cols.setdefault('cut',{})
-            cols_all = cls.curr_cols.setdefault('all',{})
+    def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        offset = table_spec['offset']
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('type__name','Type','1'),
-                ('subtype__name','Subtype','1'),
-                ('value','Value','1'),
-                ('actionable_tags_cache','Tags','1')
-            ]
+        for row in q:
+            row = list(row)
+            row[1] = Status.TLP_MAP[row[1]]
+            row[2] = Status.TLP_MAP[row[2]]
+            row[3] = Status.CONFIDENCE_MAP[row[3]]
+            row[4] = Status.PROCESSING_MAP[row[4]]
 
-            #optinal columns to display (index,query_select_row,col_name,searchable)
-            OPT_COLS = []
+            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+0]}),
+                                                                 row[8])
 
-            fillColDict(cols_cut,COLS_TO_DISPLAY)
-            for index,content in OPT_COLS:
-                COLS_TO_DISPLAY.insert(index,content)
-            fillColDict(cols_all,COLS_TO_DISPLAY)
+            row = row[:-1]
 
-    #filter = [{
-    #    'status_thru__active' : True
-    #}]
+            res['data'].append(row)
+
+
+
     #select_related = ['status_thru__status']
 
 
-def all_status_infos(request):
-    SingletonObservablesWithStatusOneTableDataProvider.init_data()
-    name = 'all_status_infos'
-    content_dict = {
-        'title' : 'Indicators and their status',
-        'tables' : [],
-        'view' : name
-    }
+class BasicDatatableView(BasicTemplateView):
 
 
-    content_dict['tables'].append((content_dict['title'],COLS[name]['all']))
+    initial_filter = ''
+    data_provider_class = None
 
-    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+    datatables_dom = "tip"
 
+    def get(self, request, *args, **kwargs):
+        self.data_provider_class.init_data()
 
-
-def all_imports(request):
-    SingeltonObservablesWithSourceOneTableDataProvider.init_data()
-    name = 'all_imports'
-    content_dict = {
-        'title' : 'Indicators and their sources',
-        'tables' : [],
-        'view' : name
-    }
-
-    content_dict['tables'].append(('All',COLS[name]['all']))
-    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+        return super(BasicDatatableView, self).get(request, *args, **kwargs)
 
 
-def imports(request):
-    SingletonObservablesWithSourceDataProvider.init_data()
-    name = 'standard'
-    content_dict = {
-        'title' : 'Indicators and their sources',
-        'tables' : [],
-        'view' : name
-    }
+    def get_context_data(self, **kwargs):
+        context = super(BasicDatatableView, self).get_context_data(**kwargs)
+        context['data_view_name'] = self.data_provider_class.qualified_view_name
+        context['title'] = self.title
+        context['initial_filter'] = self.initial_filter
+        context['tables'] = []
 
-    for id,table_info in DASHBOARD_CONTENTS.items():
-        if not table_info['show_type_column']:
-            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
+        context['datatables_dom'] = self.datatables_dom
+
+
+        for table_name in self.table_spec:
+            table_name_slug = table_name.lower().replace(' ','_')
+            display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
+                                                                                      COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
+            context['tables'].append((table_name,display_columns))
+
+        return context
+
+
+
+
+class SourceInfoView(BasicDatatableView):
+
+    data_provider_class = SingeltonObservablesWithSourceOneTableDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    title = 'Indicators and their sources'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS]
+
+
+class StatusInfoView(BasicDatatableView):
+
+    data_provider_class = SingletonObservablesWithStatusOneTableDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    title = 'Indicator Status Info'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_STATI]
+
+
+class UnifiedSearch(BasicDatatableView):
+
+
+    @property
+    def initial_filter(self):
+        if self.request.GET.get('search_term',False):
+            return self.request.GET.get('search_term')
         else:
-            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
-    return render_to_response('mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+            return self.kwargs.get('search_term','')
+    data_provider_class = UnifiedSearchSourceDataProvider
 
-def status_infos(request):
-    SingletonObservablesWithStatusDataProvider.init_data()
-    name = 'status'
-    content_dict = {
-        'title' : 'Indicators and their status',
-        'tables' : [],
-        'view' : name
-    }
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
 
-    for id,table_info in DASHBOARD_CONTENTS.items():
-        if not table_info['show_type_column']:
-            content_dict['tables'].append((table_info['name'],COLS[name]['cut']))
-        else:
-            content_dict['tables'].append((table_info['name'],COLS[name]['all']))
 
-    return render_to_response('mantis_actionables/%s/status.html' % DINGOS_TEMPLATE_FAMILY,
-                              content_dict, context_instance=RequestContext(request))
+    title = 'Unified Search'
+
+    table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS,
+                  data_provider_class.TABLE_NAME_DINGOS_VALUES,
+data_provider_class.TABLE_NAME_INFOBJECT_NAMES]
+
+
 
 def processActionablesTagging(data,**kwargs):
     action = data['action']
@@ -591,8 +725,15 @@ def processActionablesTagging(data,**kwargs):
     return res
 
 
-class ActionablesContextView(BasicTemplateView):
+class ActionablesContextView(BasicFilterView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
+
+
+    filterset_class= SingletonObservablesFilter
+
+    allow_save_search = False
+
+    counting_paginator = True
 
     @property
     def title(self):
@@ -603,46 +744,54 @@ class ActionablesContextView(BasicTemplateView):
                      'value': 'actionable_tag_thru__singleton_observables__value'}
 
 
+    object2tag_map = {}
+
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == self.curr_context_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+
+    @property
+    def queryset(self):
+        tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
+                                         .filter(actionable_tag_thru__content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)\
+                                        .values_list('actionable_tag_thru__object_id',flat=True)
+
+
+
+        return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
+                                                                                           'actionable_tags__actionable_tag__context',
+                                                                                           'actionable_tags__actionable_tag__tag').\
+            prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
+            prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
+            prefetch_related('sources__iobject_identifier__latest__iobject_type').\
+            prefetch_related('sources__import_info','sources__import_info__namespace')
+
+
+
 
     def get_context_data(self, **kwargs):
 
+        # recalculate tag map
+        self.object2tags(None)
 
         context = super(ActionablesContextView, self).get_context_data(**kwargs)
 
-        # TODO: Below, the tagged singleton observables are extracted
-        # via the Actionable tag. It would be more natural to
-        # query via SingletonObservable and aggregate the tags...
-
-        cols = ['tag__name',\
-                'actionable_tag_thru__singleton_observables__type__name',\
-                'actionable_tag_thru__singleton_observables__subtype__name',\
-                'actionable_tag_thru__singleton_observables__value',\
-                'actionable_tag_thru__singleton_observables__id']
-
-        matching_observables = ActionableTag.objects.filter(context__name=self.curr_context_name)\
-                                        .filter(actionable_tag_thru__singleton_observables__isnull=False)\
-                                        .values_list(*cols)
-
-        action_tags = ActionableTag.objects.filter(context__name=self.curr_context_name)
-
-        # TODO: This does not work because the order is thrown away below when
-        # aggregating the tags.
-
-        if self.order_by:
-            matching_observables.order_by(self.order_by)
-
-
-        obs_tag_map = {}
-        for observable in matching_observables:
-            obs = obs_tag_map.setdefault((observable[1],observable[2],observable[3],observable[4]),[])
-            obs.append(observable[0])
-
 
         context['isEditable'] = True
-        context['obs_tag_map'] = obs_tag_map
-
-        # TODO: Displaying buttons in this widget is a hack: we need
-        # a proper menu system with a context-specific menu display
 
         context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_history']}
         return context
@@ -676,8 +825,10 @@ class ActionablesTagHistoryView(BasicTemplateView):
         cols_history = ['tag__tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
         sel_rel = ['tag','user','content_type']
         history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
+                         filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
                          filter(tag__context__name=self.tag_context).order_by('-timestamp').\
                          values(*cols_history))
+
 
         obj_info_mapping = {}
         for model,cols in self.possible_models.items():
@@ -723,17 +874,237 @@ class ActionablesContextList(BasicFilterView):
 
     counting_paginator = True
 
-class ActionablesContextEditView(BasicUpdateView):
+class ImportInfoList(BasicFilterView):
+    template_name = 'mantis_actionables/%s/ImportInfoList.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = "Import Overview"
+
+    filterset_class= ImportInfoFilter
+
+    allow_save_search = False
+
+    counting_paginator = True
+
+    object2tag_map = {}
+
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+class SingletonObservableDetailView(BasicDetailView):
+
+    template_name = 'mantis_actionables/%s/SingletonObservableDetails.html' % DINGOS_TEMPLATE_FAMILY
+
+    model = SingletonObservable
+
+    prefetch_related = ['type','subtype']
+
+    title = "Indiator Details"
+
+
+
+    stati_list = []
+
+    sources_list = []
+
+    def get_context_data(self, **kwargs):
+
+        context = super(SingletonObservableDetailView, self).get_context_data(**kwargs)
+
+        if self.stati_list:
+
+            return self.stati_list
+        else:
+
+
+            self.stati_list = Status2X.objects.filter(object_id=self.kwargs['pk'],
+                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
+
+            #self.stati_list = Status.objects.filter(
+        context['stati2x'] = self.stati_list
+
+        if self.sources_list:
+
+            return self.sources_list
+        else:
+
+            self.sources_list = Source.objects.filter(object_id=self.kwargs['pk'],
+                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
+        context['sources'] = self.sources_list
+
+
+
+
+        return context
+
+
+
+
+    @property
+    def stati(self):
+        print "Stati called"
+        self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
+                                                    actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
+        print "Done"
+        return self.stati_list
+
+
+
+class ImportInfoDetailsView(BasicFilterView):
+    template_name = 'mantis_actionables/%s/ImportInfoDetails.html' % DINGOS_TEMPLATE_FAMILY
+
+    filterset_class = SingletonObservablesFilter
+
+    @property
+    def object(self):
+        return ImportInfo.objects.get(pk=self.kwargs.get('pk'))
+
+    @property
+    def queryset(self):
+        return SingletonObservable.objects.filter(sources__import_info_id=self.kwargs.get('pk')).select_related('type','subtype')
+
+    def title(self):
+
+        return "%s" % self.object.name
+
+    # TODO Pagination does not correctly here???
+    paginate_by = 0
+
+    object2tag_map = {}
+
+
+    def object2tags(self,object):
+        if not self.object2tag_map or not object:
+
+            self.object2tag_map = {}
+            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk)
+
+
+        if object:
+            return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+    def post(self, request, *args, **kwargs):
+        self.form = InvestigationForm(request.POST.dict())
+        form_valid = self.form.is_valid()
+        cleaned_data = self.form.cleaned_data
+        if form_valid:
+            context_name = cleaned_data.get('investigation_tag')
+            actionable_tag_bulk_action.delay(action="add",
+                                             context_name_pairs=[(context_name,context_name)],
+                                             thing_to_tag_pks= map(lambda x:x.pk,self.queryset),
+                                             user=request.user,
+                                             comment = "Investigation initiated on report '%s'" % self.object.name)
+            ActionableTag.bulk_action(action="add",
+                                      context_name_pairs=[(context_name,context_name)],
+                                      thing_to_tag_pks= [self.object.pk],
+                                      thing_to_tag_model= ImportInfo,
+                                      user=request.user,
+                                      comment = "Investigation initiated on report '%s'" % self.object.name)
+            messages.success(request,"Investigation tag is being added to all indicators in this report.")
+        else:
+            messages.error(request,"Please chose a valid investigation tag.")
+        return super(ImportInfoDetailsView, self).get(request, *args, **kwargs)
+
+
+class ActionablesContextEditView(BasicDetailView):
     template_name = 'mantis_actionables/%s/ContextEdit.html' % DINGOS_TEMPLATE_FAMILY
     model = Context
     fields = ['title','description']
+
+    form = None
 
     def get_context_data(self, **kwargs):
 
         context = super(ActionablesContextEditView, self).get_context_data(**kwargs)
         context['title'] = "Edit context: %s" % self.object.name
+
+        if not self.form:
+            self.form = ContextEditForm({'type': self.object.type,
+                                         'title': self.object.title,
+                                         'description': self.object.description,
+                                         'related_incident_id' : self.object.related_incident_id},
+                                         current_type = self.object.type,
+                                         current_name = self.object.name)
+
+
+        context['form'] = self.form
+
         return context
+
+
+    #def get(self, request, *args, **kwargs):
+    #    return super(ActionablesContextEditView, self).get(request, *args, **kwargs)
+
+
+    def post(self, request, *args, **kwargs):
+        super(ActionablesContextEditView,self).get(request, *args, **kwargs)
+        self.form = ContextEditForm(request.POST.dict(),
+                                    current_type = self.object.type,
+                                    current_name = self.object.name)
+        if self.form.is_valid():
+            cleaned_data = self.form.cleaned_data
+            type = int(cleaned_data['type'])
+
+            self.object.title = cleaned_data['title']
+            self.object.description = cleaned_data['description']
+            self.object.related_incident_id = cleaned_data['related_incident_id']
+
+
+            if type != self.object.type:
+
+                # Rename dingos tag
+                try:
+                    tag = Tag.objects.get(name=self.object.name)
+                except ObjectDoesNotExist:
+                    tag = None
+
+                if tag:
+                    tag.name = cleaned_data['new_context_name']
+                    tag.save()
+
+                # Rename actionable tags
+
+                TagName.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
+                self.object.name = cleaned_data['new_context_name']
+                self.object.type = type
+                messages.success(request,"Context and associated tags renamed to '%s'" % cleaned_data['new_context_name'])
+
+
+            self.object.save()
+            messages.success(request,"Changes written.")
+
+            return HttpResponseRedirect(self.object.get_absolute_url())
+        else:
+            messages.error(request,"Please enter valid information.")
+
+
+        return super(ActionablesContextEditView, self).get(request, *args, **kwargs)
+
+
+
+
+
+
 
     def get_object(self):
         return Context.objects.get(name=self.kwargs['context_name'])
+
+
 

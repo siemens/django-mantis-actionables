@@ -18,30 +18,41 @@
 # -*- coding: utf-8 -*-
 
 from django.conf.urls import patterns, url
-from .views import SingletonObservablesWithSourceDataProvider, \
-    SingeltonObservablesWithSourceOneTableDataProvider, \
-    SingletonObservablesWithStatusDataProvider, \
-    SingletonObservablesWithStatusOneTableDataProvider, \
-    ActionablesContextView, \
-    ActionablesContextList, \
-    ActionablesContextEditView, \
-    ActionablesTagHistoryView
-
+from .views import *
 
 urlpatterns = patterns(
     'mantis_actionables.views',
-    url(r'^imports/$', 'imports', name='actionables_imports'),
-    url(r'^all_imports/$', 'all_imports', name='actionables_all_imports'),
-    url(r'^status_infos/$', 'status_infos', name='actionables_status_infos'),
-    url(r'^all_status_infos/$', 'all_status_infos', name='actionables_all_status_infos'),
+
+    url(r'^indicators_by_source/$',
+        SourceInfoView.as_view(),
+        name='actionables_all_imports'),
+
+    url(r'^unified_search/(?P<search_term>.*)$',
+        UnifiedSearch.as_view(),
+        name='actionables_unified_search'),
+    url(r'^indicator_status_infos/$',
+        StatusInfoView.as_view(), name='actionables_all_status_infos'),
     #url(r'^refresh/$', 'refresh', name='refresh'),
-    url(r'^tbl_data/all_imports$', SingeltonObservablesWithSourceOneTableDataProvider.as_view(), name='table_data_source'),
-    url(r'^tbl_data/standard$', SingletonObservablesWithSourceDataProvider.as_view(), name='table_data_source'),
-    url(r'^tbl_data/status$', SingletonObservablesWithStatusDataProvider.as_view(), name='table_data_source_status'),
-    url(r'^tbl_data/all_status_infos$', SingletonObservablesWithStatusOneTableDataProvider.as_view(), name='table_data_source_status'),
+    url(r'^tbl_data/indicators_by_source$',
+        SingeltonObservablesWithSourceOneTableDataProvider.as_view(),
+        name=SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name()),
+
+    url(r'^tbl_data/unified_search$',
+        UnifiedSearchSourceDataProvider.as_view(),
+        name=UnifiedSearchSourceDataProvider.qualified_view_name()),
+    url(r'^tbl_data/indicator_status_infos$',
+        SingletonObservablesWithStatusOneTableDataProvider.as_view(),
+        name=SingletonObservablesWithStatusOneTableDataProvider.qualified_view_name()),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/?$', ActionablesContextView.as_view(), name='actionables_context_view'),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/edit$', ActionablesContextEditView.as_view(), name='actionables_context_edit_view'),
     url(r'^context/?$', ActionablesContextList.as_view(), name='actionables_context_list'),
+    url(r'^import_info/?$', ImportInfoList.as_view(), name='actionables_import_info_list'),
+    url(r'^import_info/(?P<pk>\d*)$',
+        ImportInfoDetailsView.as_view(),
+        name= "actionables_import_info_details"),
+    url(r'^singleton_observable/(?P<pk>\d*)$',
+        SingletonObservableDetailView.as_view(),
+        name= "actionables_singleton_observables_details"),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/history$', ActionablesTagHistoryView.as_view(), name='actionables_context_history_view'),
     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
 

@@ -15,6 +15,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import pytz
 from datetime import datetime
 
 from optparse import make_option
@@ -57,8 +58,10 @@ class Command(BaseCommand):
         if options.get('timeframe'):
             try:
                 from_time, to_time = options.get('timeframe')
-                from_time = datetime.strptime(from_time,"%Y-%m-%d %H:%M:%S")
-                to_time = datetime.strptime(to_time,"%Y-%m-%d %H:%M:%S")
+                from_time = datetime.strptime(from_time,"%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.timezone('Etc/GMT+0'))
+                to_time = datetime.strptime(to_time,"%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.timezone('Etc/GMT+0'))
+
+
             except ValueError:
                 raise CommandError("wrong from_timestamp format, use Y-M-D H:M:S")
 

@@ -17,35 +17,126 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import json
 import importlib
 
-from mantis_actionables import MANTIS_ACTIONABLES_STATUS_CREATION_FUNCTION_PATH, \
-                               MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH
-
-from mantis_actionables.models import Status
+from mantis_actionables import MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH, \
+                               MANTIS_ACTIONABLES_SRC_META_DATA_FUNCTION_PATH
 
 
+from mantis_actionables.models import Status, Source
 
-def createStatus(*args,**kwargs):
-    if MANTIS_ACTIONABLES_STATUS_CREATION_FUNCTION_PATH:
-        mod_name, func_name = MANTIS_ACTIONABLES_STATUS_CREATION_FUNCTION_PATH.rsplit('.',1)
-        mod = importlib.import_module(mod_name)
-        create_status_function = getattr(mod,func_name)
-        return create_status_function(*args,**kwargs)
-    else:
-        new_status, created = Status.objects.get_or_create(false_positive=False,
-                                                           active=True,
-                                                           priority=Status.PRIORITY_UNCERTAIN)
-        return new_status
+
+
 
 def updateStatus(status,*args,**kwargs):
+    source_obj = None
+
+
+    if 'source_obj' in kwargs:
+        source_obj = kwargs['source_obj']
+    else:
+        source_obj = None
+
+    if 'related_entities' in kwargs:
+        related_entities = kwargs['related_entities']
+
+    elif  source_obj:
+        related_entities = source_obj.related_stix_entities.all()
+    else:
+        related_entities = []
+
+
+    if status:
+        most_permissive_tlp = status.most_permissive_tlp
+        most_restrictive_tlp = status.most_restrictive_tlp
+        kill_chain_phases = set(status.kill_chain_phases.split(';'))
+        max_confidence = status.max_confidence
+        active = status.active
+        priority = status.priority
+        false_positive = status.false_positive
+        best_processing = status.best_processing
+    else:
+        most_permissive_tlp = Status.TLP_UNKOWN
+        most_restrictive_tlp = Status.TLP_UNKOWN
+        kill_chain_phases = set([])
+        max_confidence = Status.CONFIDENCE_UNKOWN
+        active=True
+        priority = Status.PRIORITY_UNCERTAIN
+        false_positive = False
+        best_processing = Status.PROCESSING_UNKNOWN
+
+    if source_obj:
+        most_permissive_tlp = max(source_obj.tlp,most_permissive_tlp)
+        if source_obj.tlp != Source.TLP_UNKOWN and most_restrictive_tlp != Source.TLP_UNKOWN:
+            most_restrictive_tlp = min(source_obj.tlp,most_restrictive_tlp)
+        else:
+            # One of the two tlp values is 0, so this is the first time we
+            # see a tlp value, so the most_permissive is also the most_restrictive
+            most_restrictive_tlp = most_permissive_tlp
+
+        best_processing = max(source_obj.processing, best_processing)
+
+
+    for related_entity in related_entities:
+
+        if related_entity.entity_type.name == 'Indicator':
+            essence = related_entity.read_essence()
+
+            if 'kill_chain_phases' in essence:
+
+                kill_chain_phases_list = essence['kill_chain_phases'].split(';')
+
+                kill_chain_phases.update(kill_chain_phases_list)
+
+
+
+            if 'confidence' in essence:
+                max_confidence = max(max_confidence,Status.CONFIDENCE_RMAP[essence['confidence'].lower()])
+
+
+
+
+    kill_chain_phases = ';'.join(kill_chain_phases)
+
+    creation_kwargs = {'most_permissive_tlp' : most_permissive_tlp,
+                       'most_restrictive_tlp' : most_restrictive_tlp,
+                       'kill_chain_phases': kill_chain_phases,
+                       'max_confidence': max_confidence,
+                       'active': active,
+                       'priority': priority,
+                       'false_positive': false_positive,
+                       'best_processing': best_processing}
+
+
     if MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH:
         mod_name, func_name = MANTIS_ACTIONABLES_STATUS_UPDATE_FUNCTION_PATH.rsplit('.',1)
         mod = importlib.import_module(mod_name)
         update_status_function = getattr(mod,func_name)
-        return update_status_function(status,*args,**kwargs)
+        creation_kwargs = update_status_function(status,*args,default_creation_kwargs=creation_kwargs,**kwargs)
+
+
+
+
+
+    new_status, created = Status.objects.get_or_create(**creation_kwargs)
+
+    return (new_status,created)
+
+
+def createSourceMetaData(*args,**kwargs):
+
+    if MANTIS_ACTIONABLES_SRC_META_DATA_FUNCTION_PATH:
+        mod_name, func_name = MANTIS_ACTIONABLES_SRC_META_DATA_FUNCTION_PATH.rsplit('.',1)
+        mod = importlib.import_module(mod_name)
+        my_function = getattr(mod,func_name)
+
+        return my_function(*args,**kwargs)
+
     else:
-        new_status, created = Status.objects.get_or_create(false_positive=status.false_positive,
-                                                           active=status.active,
-                                                           priority=status.priority)
-        return (new_status,created)
+       result = {'origin': Source.ORIGIN_UNKNOWN,
+                 'processing': Source.PROCESSING_UNKNOWN}
+    return result
+
+
+

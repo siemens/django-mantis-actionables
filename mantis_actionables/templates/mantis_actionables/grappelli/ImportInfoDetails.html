@@ -1,0 +1,78 @@
+{% extends "mantis_actionables/grappelli/base_lists_two_column.html" %}
+{% load actionables_tags %}
+{% load dingos_tags %}
+
+{% load tagging_widgets %}
+
+{% block left_column %}
+
+
+
+    <div class="grp-module grp-collapse grp-open">
+      <h2 class="grp-collapse-handler">Singleton Observables contained in Import</h2>
+
+      <div class="grp-module grp-changelist-results">
+
+        {% if is_paginated %}
+                    {%  render_paginator  %}
+                {% endif %}
+
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+        <thead>
+         <tr>
+
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "type__name" "Type" %}
+
+           </th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "subtype__name" "Subtype" %}
+
+           </th>
+           <th scope="col"  class="sortable column-identifier">
+               {% render_table_ordering "value" "Value" %}
+
+           </th>
+           <th class="middle">Tags</th>
+         </tr>
+         </thead>
+        <tbody>
+         {% for singleton in view.object_list %}
+         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+           <td class="w-1 nowrap middle">{{ singleton.type.name }}</td>
+           <td class="w-1 nowrap middle">{{ singleton.subtype.name }}</td>
+           <td class="w-1 nowrap middle">{{ singleton.value }}</td>
+           <td class="middle">
+            <div id="tags" class="tag-block" data-obj-id="{{ singleton.pk }}" style="float: left;" data-curr-context="">
+            {% view_apply 'object2tags' singleton as tags%}
+            {% if tags %}
+                {%  for tag in tags %}
+                {% show_TagDisplay tag 'actionables' False tag_context=tag%}
+                {% endfor %}
+            {% endif %}
+            </div>
+          </td>
+         {% endfor %}
+        </tbody>
+       </table>
+        {% if is_paginated %}
+                    {%  render_paginator  %}
+                {% endif %}
+
+
+
+    </div>
+
+
+
+
+    {% include 'autocomplete_light/static.html' %}
+{% include "dingos/grappelli/includes/_TaggingDialogs.html" %}
+{% endblock %}
+
+{% block right_column %}
+{% show_InvestigationAction  %}
+{{ block.super }}
+{% endblock %}

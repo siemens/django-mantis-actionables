@@ -33,10 +33,10 @@ class SourceAdmin(admin.ModelAdmin):
     list_display = (
         u'id',
         'timestamp',
-        'iobject',
+        'iobject_identifier',
         'iobject_fact',
         'iobject_factvalue',
-        'top_level_iobject',
+        'top_level_iobject_identifier',
         'import_info',
         'origin',
         'tlp',
@@ -46,10 +46,10 @@ class SourceAdmin(admin.ModelAdmin):
     )
     list_filter = ('timestamp', 'import_info')
     raw_id_fields = (
-        'iobject',
+        'iobject_identifier',
         'iobject_fact',
         'iobject_factvalue',
-        'top_level_iobject',
+        'top_level_iobject_identifier',
         'content_type',
     )
 
@@ -92,6 +92,11 @@ class SingletonObservableTypeAdmin(admin.ModelAdmin):
     list_display = (u'id', 'name', 'description')
     search_fields = ('name',)
 
+class SingletonObservableSubtypeAdmin(admin.ModelAdmin):
+
+    list_display = (u'id', 'name', 'description')
+    search_fields = ('name',)
+
 
 class SingletonObservableAdmin(admin.ModelAdmin):
 
@@ -126,6 +131,7 @@ _register(models.Source, SourceAdmin)
 _register(models.Status, StatusAdmin)
 _register(models.Status2X, Status2XAdmin)
 _register(models.SingletonObservableType, SingletonObservableTypeAdmin)
+_register(models.SingletonObservableSubtype, SingletonObservableSubtypeAdmin)
 _register(models.SingletonObservable, SingletonObservableAdmin)
 _register(models.SignatureType, SignatureTypeAdmin)
 _register(models.IDSSignature, IDSSignatureAdmin)

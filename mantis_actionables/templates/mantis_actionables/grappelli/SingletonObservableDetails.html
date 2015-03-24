@@ -1,0 +1,163 @@
+{% extends "mantis_actionables/grappelli/base_lists_two_column.html" %}
+{% load actionables_tags %}
+{% load dingos_tags %}
+
+{% load tagging_widgets %}
+
+{% block left_column %}
+
+
+    <h1>
+    {% if object.subtype.name %}
+    {{ object.type.name }}/{{object.subtype.name}}: {{ object.value }}
+    {% else %}
+        {{ object.type.name }}: {{ object.value }}
+    {% endif %}
+    </h1>
+
+
+    <br/>
+
+    <div class="grp-module grp-collapse grp-open">
+      <h2 class="grp-collapse-handler">Status Infos</h2>
+
+      <div class="grp-module grp-changelist-results">
+
+
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+        <thead>
+         <tr>
+
+           <th class="middle"  >
+               Timestamp
+
+           </th>
+
+           <th class="middle"  >
+               Comment
+
+           </th>
+
+           <th class="middle"  >
+               Active
+
+           </th>
+
+           <th class="middle"  >
+               Best Processing
+
+           </th>
+           <th class="middle"  >
+               Most permissive TLP
+
+           </th>
+           <th class="middle"  >
+               Most restrictive TLP
+
+           </th>
+           <th class="middle"  >
+               Max Confidence
+
+           </th>
+
+
+
+         </thead>
+        <tbody>
+         {% for status2x in stati2x %}
+         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+           <td class="w-1 nowrap middle">{{ status2x.timestamp }}</td>
+             <td class="w-1 nowrap middle">{{ status2x.action.comment }}</td>
+           <td class="w-1 nowrap middle">{{ status2x.active }}</td>
+           <td class="w-1 nowrap middle">{{ status2x.status.best_processing | lookup_status_processing}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.most_permissive_tlp | lookup_status_tlp}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.most_restrictive_tlp | lookup_status_tlp}}</td>
+             <td class="w-1 nowrap middle">{{ status2x.status.max_confidence | lookup_status_confidence}}</td>
+
+         </tr>
+         {% endfor %}
+        </tbody>
+       </table>
+
+      </div>
+    </div>
+
+
+    <div class="grp-module grp-collapse grp-open">
+      <h2 class="grp-collapse-handler">Sources</h2>
+
+      <div class="grp-module grp-changelist-results">
+
+
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+        <thead>
+         <tr>
+
+           <th class="middle">Import Timestamp</th>
+
+           <th class="middle"  >
+               Source
+
+           </th>
+         </tr>
+         </thead>
+        <tbody>
+          {% for source in sources %}
+           <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+           <td class="w-1 nowrap middle">
+               {{ source.timestamp }}
+           </td>
+           <td class="w-1 nowrap middle">
+
+	      {% if source.top_level_iobject_identifier %}
+                {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
+              {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
+                {{ source.iobject_identifier.latest.iobject_type.name }}
+                {%  if stix_obj_url %}
+                <a href="{{ stix_obj_url }}">
+                    <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
+                </a>
+                {% endif %}
+
+                in Report {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
+                {%  if stix_tl_obj_url %}
+                <a href="{{ stix_tl_obj_url }}">
+                     <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
+                </a>
+                {% endif %}
+
+              {% else %}
+                {% url  'actionables_import_info_details' pk=source.import_info.pk as import_info_url %}
+                Actionables Import
+                {%  if import_info_url %}
+                <a href="{{ import_info_url }}">
+                    <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
+                </a>
+                {% endif %}
+                    {{ source.import_info.namespace.uri}} '{{ source.import_info.name }}'
+
+	      {% endif %}
+              </td>
+              </tr>
+    {% endfor %}
+           </tbody>
+       </table>
+
+
+
+    </div>
+    </div>
+
+
+
+
+
+{% endblock %}
+
+{% block right_column %}
+
+{% endblock %}

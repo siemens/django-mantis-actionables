@@ -19,6 +19,9 @@
 
 import logging
 
+from json import dumps
+
+from dingos.graph_utils import dfs_preorder_nodes
 
 from datetime import timedelta
 
@@ -33,18 +36,20 @@ from django.db.models import Q
 
 from dingos.models import InfoObject,Fact,TaggingHistory
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
-from dingos.graph_traversal import follow_references
+from dingos.graph_traversal import follow_references, annotate_graph
 
-from . import ACTIVE_MANTIS_EXPORTERS, STIX_REPORT_FAMILY_AND_TYPES, MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
+from . import MANTIS_ACTIONABLES_ACTIVE_EXPORTERS, MANTIS_ACTIONABLES_STIX_REPORT_FAMILY_AND_TYPES, MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
 from .models import SingletonObservable,\
     SingletonObservableType, \
     SingletonObservableSubtype, \
     Source, \
     Status2X, \
     Action, \
-    ActionableTag
+    ActionableTag, \
+    STIX_Entity, \
+    EntityType
 
-from .status_management import createStatus, updateStatus
+from .status_management import updateStatus, createSourceMetaData
 
 from tasks import async_export_to_actionables
 
@@ -113,7 +118,7 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
                                                                           tag__name = dingos_tag_name,
                                                                           object_id__in = fact_pks,
                                                                           content_type = fact_content_type).order_by('-timestamp')
-    result_user = None
+
 
     if likely_dingos_tag_history_entries:
         likely_matching_entry = likely_dingos_tag_history_entries[0]
@@ -129,13 +134,15 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
 
                 comment = "%s (Comment and user derived automatically from DINGOS tag)" % likely_matching_entry.comment
                 result_user = likely_matching_entry.user
+
             else:
                 comment = ""
         if (not result_user) and likely_matching_entry.user and likely_matching_entry.user != user:
             result_user = likely_matching_entry.user
             comment = "(User derived automatically from DINGOS tag history)"
-        else:
+        if user and not result_user:
             result_user = user
+
 
     return (result_user,comment)
 
@@ -293,63 +300,11 @@ def update_and_transfer_tags(fact_pks,user=None):
 
             # We may have to update the status
 
-            try:
-                # There should already be a status associated with the
-                # singleton observable -- we extract that and
-                # call the update function
-
-                new_status = None
-                status2x = Status2X.objects.get(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                object_id=singleton.id,
-                                                active=True)
-
-                status = status2x.status
-                new_status,created = updateStatus(status=status,
-                                                  removed_tags = removed_tags,
-                                                  added_tags = added_tags)
-
-                logger.debug("Status %s found" % (status))
-                logger.debug("New status %s derived" % (new_status))
-
-
-            except ObjectDoesNotExist:
-                # This should not happen, but let's guard against it anyhow
-                logger.critical("No status found for existing singleton observable. "
-                                "I create one, but this should not happen!!!")
-                status = createStatus(added_tags=added_tags,removed_tags=removed_tags)
-                if not action:
-                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
-                status2x = Status2X(action=action,status=status,active=True,timestamp=timezone.now(),marked=singleton)
-                status2x.save()
-                created = False
-            except MultipleObjectsReturned:
-                # This should not happen either, but let's guard against it
-                logger.critical("Multiple active status2x objects returned: I take the most recent status2x object.")
-                status2xes = Status2X.objects.filter(content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
-                                                     object_id=singleton.id,
-                                                     active=True).order_by('-timestamp')
-                status2x = status2xes[0]
-
-                status2xes.update(active=False)
-
-                status2x.active=True
-                status2x.save()
-
-                status = status2x.status
-                new_status,created = updateStatus(status=status,
-                                                  removed_tags = removed_tags,
-                                                  added_tags = added_tags)
-
-
-            if created or (new_status and new_status.id != status.id):
-                logger.debug("Updating status")
-
-                status2x.active = False
-                status2x.save()
-                if not action:
-                    action,action_created = Action.objects.get_or_create(user=user,comment="Tag addition or removal")
-                status2x_new = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=singleton)
-                status2x_new.save()
+            singleton.update_status(update_function=updateStatus,
+                                    action=action,
+                                    user=user,
+                                    added_tags=added_tags,
+                                    removed_tags=removed_tags)
 
         # Check if any of the added/removed dingos tag is matching the context pattern.
         # If it is, transfer the change into the set of actionable tags associated with
@@ -423,6 +378,8 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
         else:
             top_level_iobj_pks = top_level_iobjs
 
+    else:
+        top_level_iobj_pks = []
 
     action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
@@ -433,11 +390,16 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                  skip_terms = skip_terms,
                                  direction='down'
                                  )
+        top_level_iobj_identifier_pk = graph.node[top_level_iobj_pk]['identifier_pk']
+
+
         postprocessor=None
 
         results = []
 
-        for exporter in ACTIVE_MANTIS_EXPORTERS:
+        details_obj = None
+
+        for exporter in MANTIS_ACTIONABLES_ACTIVE_EXPORTERS:
 
             postprocessor_classes = POSTPROCESSOR_REGISTRY[exporter]
 
@@ -450,21 +412,20 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                     # already been pulled from the database
                                                     # rather than pulling it again for
                                                     # each iteration.
-                                                    details_obj = postprocessor
+                                                    details_obj = details_obj
                                                     )
-                (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='dict')
+
+                details_obj = postprocessor
+
+                (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='exporter')
 
                 results += part_results
 
+        import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=action,user=user,graph=graph)
 
-        if results:
-            results_per_top_level_obj.append((top_level_iobj_pk,results))
 
-    for (top_level_iobj_pk, results) in results_per_top_level_obj:
-        #async_export_to_actionables(top_level_iobj_pk,results,action=action)
-        import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=action,user=user)
 
-def import_singleton_observables_from_export_result(top_level_iobj_pk,results,action=None,user=None):
+def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,action=None,user=None,graph=None):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -514,12 +475,30 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
 
     iobj2tlp_map = {}
 
+    # Mapping from identifier_pks to related_entities
+
+    if not graph:
+        graph = follow_references([top_level_iobj_pk],
+                                  skip_terms = [],
+                                  direction='down'
+                                  )
+
+        annotate_graph(graph)
+
+
+    identifier_pk_2_related_entity_map = {}
+
+    top_level_node = graph.node[top_level_iobj_pk]
+
+    logger.info("Treating %s:%s" % (top_level_node['identifier_ns'],top_level_node['identifier_uid']))
+
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
-    containing_iobj_pks = set(map(lambda x: x.get('object.pk'), results))
 
-    select_columns = ['id','marking_thru__marking__fact_thru__fact__fact_values__value']
+    containing_iobj_pks = set(map(lambda x: x.get('_iobject_pk'), results))
+
+    select_columns = ['identifier_id','marking_thru__marking__fact_thru__fact__fact_values__value']
     color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
         .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
                 marking_thru__marking__fact_thru__fact__fact_term__attribute='color')\
@@ -530,9 +509,10 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
 
     for result in results:
 
-        iobj_pk = int(result['object.pk'])
-        fact_pk = int(result['fact.pk'])
-        fact_value_pk = int(result['value.pk'])
+        identifier_pk = int(result['_identifier_pk'])
+        iobject_pk = int(result['_iobject_pk'])
+        fact_pk = int(result['_fact_pk'])
+        fact_value_pk = int(result['_value_pk'])
         type = result.get('actionable_type','')
         subtype = result.get('actionable_subtype','')
 
@@ -544,37 +524,112 @@ def import_singleton_observables_from_export_result(top_level_iobj_pk,results,ac
         value = result.get('actionable_info','')
 
         if not (type and value):
+            logger.error("Incomplete actionable information %s/%s for value %s in "
+                         "top-level pk %s (object pk %s)" % (type,
+                                                             subtype,
+                                                             value,
+                                                             top_level_iobj_pk,
+                                                             iobject_pk))
             continue
+
+        src_meta_data = createSourceMetaData(top_level_node=graph.node[top_level_iobj_pk])
+        if not src_meta_data:
+            src_meta_data = {}
+
+        origin_info = src_meta_data.get('origin',Source.ORIGIN_UNKNOWN)
+        processing_info = src_meta_data.get('processing',Source.PROCESSING_UNKNOWN)
+
+
+
 
         singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
         singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
 
-        observable, created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
-                                                                        subtype=singleton_subtype_obj,
+        observable, observable_created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
+                                                                                   subtype=singleton_subtype_obj,
                                                                         value=value)
 
-        source, created = Source.objects.get_or_create(iobject_id=iobj_pk,
+        source, source_created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
+
                                                        iobject_fact_id=fact_pk,
                                                        iobject_factvalue_id=fact_value_pk,
-                                                       top_level_iobject_id=top_level_iobj_pk,
-                                                       origin=Source.ORIGIN_UNKNOWN,
-                                                       processing=Source.PROCESSING_UNKNOWN,
+                                                       top_level_iobject_identifier_id=top_level_iobj_identifier_pk,
                                                        object_id=observable.id,
-                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE
-                                                    )
+                                                       content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE,
+                                                       defaults = {
+                                                          'iobject_id': iobject_pk,
+                                                          'top_level_iobject_id' : top_level_iobj_pk,
+                                                          'processing': processing_info,
+                                                          'origin': origin_info
+                                                       }
 
-        tlp_color = tlp_color_map.get(iobj2tlp_map.get(iobj_pk,None),Source.TLP_UNKOWN)
+                                                    )
+        if not source_created:
+            logger.debug("Found existing source object, updating")
+            source.iobject_id = iobject_pk
+            source.top_level_iobject_id = top_level_iobj_pk
+            source.processing = processing_info
+            source.origin = origin_info
+        else:
+            logger.debug("Created new source object")
+
+
+        entities=[]
+
+
+        for node in result['_relationship_info']:
+            essence_info = extract_essence(node, graph)
+
+            if not essence_info:
+                essence_info = None
+            else:
+                essence_info = dumps(essence_info)
+
+            if essence_info:
+                node_identifier_pk = node['identifier_pk']
+
+
+                entity = identifier_pk_2_related_entity_map.get(node_identifier_pk)
+
+                if not entity:
+                    entity_type, created = EntityType.cached_objects.get_or_create(name=node['iobject_type'])
+                    entity, created = STIX_Entity.objects.get_or_create(iobject_identifier_id=node_identifier_pk,
+                                                                        non_iobject_identifier='',
+                                                                        defaults={'essence': essence_info,
+                                                                                  'entity_type':entity_type})
+                    if not created:
+                        entity.essence = essence_info
+                        entity.entity_type = entity_type
+                        entity.save()
+
+                    identifier_pk_2_related_entity_map[node_identifier_pk] = entity
+
+
+                entities.append(entity)
+
+
+        source.related_stix_entities.clear()
+
+        source.related_stix_entities.add(*entities)
+
+
+
+        tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
         if not source.tlp == tlp_color:
             source.tlp = tlp_color
             source.save()
 
-        if created:
+        if observable_created:
             logger.info("Singleton Observable created (%s,%s,%s)" % (type,subtype,value))
-            new_status = createStatus(added_tags=[]) # TODO: pass source info
-            status2x = Status2X(action=action,status=new_status,active=True,timestamp=timezone.now(),marked=observable)
-            status2x.save()
 
-            logger.debug("Singleton Observable (%s, %s, %s) not created, already in database" % (type,subtype,value))
+        else:
+            logger.info("Existing Singleton Observable (%s,%s,%s) found" % (type,subtype,value))
+        observable.update_status(update_function=updateStatus,
+                                 action=action,
+                                 user=user,
+                                 source_obj = source,
+                                 related_entities = entities,
+                                 graph=graph)
 
     fact_pks = set(map(lambda x: x.get('fact.pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
@@ -603,10 +658,11 @@ def process_STIX_Reports(imported_since, imported_until=None):
     - Call the import function on the determined STIX reports
 
     """
+    start_time = timezone.now()
     if not imported_until:
         imported_until = timezone.now()
     report_filters = []
-    for report_filter in STIX_REPORT_FAMILY_AND_TYPES:
+    for report_filter in MANTIS_ACTIONABLES_STIX_REPORT_FAMILY_AND_TYPES:
         report_filters.append({
             'iobject_type__name' : report_filter['iobject_type'],
             'iobject_family__name' : report_filter['iobject_type_family']
@@ -618,6 +674,76 @@ def process_STIX_Reports(imported_since, imported_until=None):
     for item in queries:
         query |= item
     top_level_iobjs = InfoObject.objects.filter(create_timestamp__gte=imported_since,
-                                                create_timestamp__lte=imported_until)
+                                                create_timestamp__lte=imported_until).exclude(identifier__namespace__uri__icontains='test').exclude(latest_of__isnull=True)
     top_level_iobjs = list(top_level_iobjs.filter(query))
-    return import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
+    logger.info("Importing timespan %s to %s" % (imported_since,imported_until))
+    result = import_singleton_observables_from_STIX_iobjects(top_level_iobjs)
+
+    end_time = timezone.now()
+
+    logger.info("Start of import: %s; end of import: %s" % (start_time,end_time))
+
+    return result
+
+def extract_essence(node_info, graph):
+    result = {}
+    if node_info['iobject_type'] == 'Indicator':
+        confidence_facts = [ x.value for x in node_info['facts'] if x.term == 'Confidence/Value']
+
+        if confidence_facts:
+
+            result['confidence'] = confidence_facts[0]
+
+        kill_chain_phase_object_pks = list(dfs_preorder_nodes(graph,
+                                           source=node_info['iobject'].pk,
+                                           edge_pred= lambda x : 'phase_id' in x['attribute']))[1:]
+        kill_chain_phase_nodes = map(lambda x: graph.node[x],kill_chain_phase_object_pks)
+
+
+        for kill_chain_phase_node in kill_chain_phase_nodes:
+            kill_chain_phase_names = [ x.value for x in kill_chain_phase_node['facts'] if x.attribute == 'name']
+            if kill_chain_phase_names:
+                kill_chain_phases = result.setdefault('kill_chain_phases',set([]))
+                kill_chain_phases.update(kill_chain_phase_names)
+
+        if 'kill_chain_phases' in result:
+            result['kill_chain_phases'] = list(result['kill_chain_phases'])
+            result['kill_chain_phases'].sort()
+            result['kill_chain_phases'] = ';'.join(result['kill_chain_phases'])
+
+    elif node_info['iobject_type'] == "ThreatActor":
+        identity_object_pks = list(dfs_preorder_nodes(graph,
+                              source=node_info['iobject'].pk,
+                              edge_pred= lambda x : 'Identity' in x['term']))[1:]
+
+        identity_object_nodes = map(lambda x: graph.node[x],identity_object_pks)
+        #print identity_object_nodes
+        for identity_object_node in identity_object_nodes:
+            identity_names = [x.value for x in identity_object_node['facts'] if x.term == 'Name' and x.attribute == '']
+            if identity_names:
+                identities = result.setdefault('identities',set([]))
+                identities.update(identity_names)
+
+        if 'identities' in result:
+            result['identities'] = list(result['identities'])
+            result['identities'].sort()
+            result['identities'] = ';'.join(result['identities'])
+
+    elif node_info['iobject_type'] == "Campaign":
+        identity_names = [ x.value for x in node_info['facts'] if x.term == 'Names/Name' and x.attribute == '']
+        if identity_names:
+            identities = result.setdefault('names',set([]))
+            identities.update(identity_names)
+        if 'names' in result:
+            result['names'] = list(result['names'])
+            result['names'].sort()
+            result['names'] = ';'.join(result['names'])
+
+
+
+
+
+    return result
+
+
+

@@ -6,7 +6,26 @@ from dingos import DINGOS_TEMPLATE_FAMILY
 
 from mantis_actionables.forms import TagForm
 
+from mantis_actionables.models import Status
+
 register = template.Library()
+
+
+@register.filter
+def lookup_status_processing(value):
+    return Status.PROCESSING_MAP.get(value,'ERROR')
+
+@register.filter
+def lookup_status_tlp(value):
+    return Status.TLP_MAP.get(value,'ERROR')
+
+@register.filter
+def lookup_status_confidence(value):
+    return Status.CONFIDENCE_MAP.get(value,'ERROR')
+
+
+
+
 
 @register.simple_tag()
 def show_addTagInput_actionables(obj_id,curr_context):
@@ -31,6 +50,5 @@ def show_ContextMetaData(context_obj,widget_config=None):
     for button in widget_config.get('action_buttons',[]):
         context["%s_button" % button] = True
 
-    print context
     return context
 
