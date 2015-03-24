@@ -308,7 +308,9 @@ class BasicTableDataProvider(BasicJSONView):
         table_name = POST.get('table_type').replace(' ','_')
         logger.info("About to start database query for user %s for table %s" % (self.request.user,table_name))
         q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
-        logger.info("Finished database query for user %s for table %s" % (self.request.user,table_name))
+        q = list(q)
+        logger.info("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
+
         self.postprocess(table_name,res,q)
         logger.info("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
         return res
