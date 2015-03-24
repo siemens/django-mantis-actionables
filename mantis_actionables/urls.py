@@ -50,6 +50,9 @@ urlpatterns = patterns(
     url(r'^import_info/(?P<pk>\d*)$',
         ImportInfoDetailsView.as_view(),
         name= "actionables_import_info_details"),
+    url(r'^singleton_observable/(?P<pk>\d*)$',
+        SingletonObservableDetailView.as_view(),
+        name= "actionables_singleton_observables_details"),
     url(r'^context/(?P<context_name>[a-zA-Z0-9_\-]+)/history$', ActionablesTagHistoryView.as_view(), name='actionables_context_history_view'),
     #url(r'^tbl_data_export$', 'table_data_source_export', name='table_data_source_export'),
 

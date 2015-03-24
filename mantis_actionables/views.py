@@ -341,7 +341,8 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                              ('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
                              ('sources__import_info__namespace__uri','Report Source','0'), #3
                              ('sources__import_info__name','Report Name','0'), #4
-                             ('sources__import_info_id','Report Import Info PK','0') #5
+                             ('sources__import_info_id','Report Import Info PK','0'), #5,
+                             ('id','Singleton Observable PK','0') #6
                             ],
         'DISPLAY_ONLY' :  [('','Report Source','0'),
                              ('','Report Name','0'),
@@ -366,13 +367,15 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
             if row[offset+0]:
                 row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
                                                                  row[offset+1])
-                row = row[:-4]
             else:
                 row[offset+0] = row[offset+3]
                 row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+5]}),
                                                                  row[offset+4])
-                row = row[:-4]
 
+            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+6]}),
+                                                                 row[4])
+
+            row = row[:-5]
             res['data'].append(row)
 
 
@@ -481,7 +484,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
 class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider):
 
-    view_name = "singletons_with_source_data_one_table"
+    view_name = "singletons_with_status"
 
     TABLE_NAME_ALL_STATI = "Status information for indicators"
 
@@ -870,6 +873,56 @@ class ImportInfoList(BasicFilterView):
             return sorted(self.object2tag_map.get(object.pk,[]))
 
 
+class SingletonObservableDetailView(BasicDetailView):
+
+    template_name = 'mantis_actionables/%s/SingletonObservableDetails.html' % DINGOS_TEMPLATE_FAMILY
+
+    model = SingletonObservable
+
+    prefetch_related = ['status_thru__status',
+                        'sources__related_stix_entities__entity_type', #0
+                        'sources__related_stix_entities', #1
+                        'sources__top_level_iobject_identifier__namespace', #2
+                        'sources__top_level_iobject_identifier', #3
+                        'sources__top_level_iobject_identifier__latest', #4
+                        'sources__import_info__namespace', #5
+                        'sources__import_info', #6
+                        'sources__import_info', #7
+    ]
+
+
+
+
+    stati_list = []
+
+    def get_context_data(self, **kwargs):
+
+        context = super(SingletonObservableDetailView, self).get_context_data(**kwargs)
+        if self.stati_list:
+            print "Retreiving existing"
+            return self.stati_list
+        else:
+            print "Calculating"
+            self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
+                                                    actionable_thru__content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
+        context['stati'] = self.stati_list
+
+        for status in self.stati_list:
+            print status.actionable_thru.all()[0]
+        return context
+
+
+
+
+    @property
+    def stati(self):
+        print "Stati called"
+        self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
+                                                    actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
+        print "Done"
+        return self.stati_list
+
+
 
 class ImportInfoDetailsView(BasicFilterView):
     template_name = 'mantis_actionables/%s/ImportInfoDetails.html' % DINGOS_TEMPLATE_FAMILY
@@ -1014,4 +1067,6 @@ class ActionablesContextEditView(BasicDetailView):
 
     def get_object(self):
         return Context.objects.get(name=self.kwargs['context_name'])
+
+
 
