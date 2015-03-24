@@ -176,7 +176,6 @@ def datatable_query(post, paginate_at, **kwargs):
         q = q.order_by(*order_cols)
 
 
-
     q_count_filtered = q.count()
     # Treat the paging/limit
     length = safe_cast(post_dict.get('length'), int, paginate_at)
@@ -328,8 +327,9 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
     ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
         'COMMON_BASE' : [
-                ('sources__tlp','TLP','0'), #0
-                ('sources__timestamp','Source TS','0'), #1
+
+                ('sources__timestamp','Source TS','0'), #0
+                ('sources__tlp','TLP','0'), #1
                 ('type__name','Type','1'), #2
                 ('subtype__name','Subtype','1'), #3
                 ('value','Value','1'), #4
@@ -363,7 +363,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         for row in q:
             row = list(row)
 
-            row[0] = Source.TLP_COLOR_CSS.get(row[0],"ERROR")
+            row[1] = Source.TLP_COLOR_CSS.get(row[1],"ERROR")
             if row[offset+0]:
                 row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
                                                                  row[offset+1])
@@ -488,31 +488,36 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
 
     TABLE_NAME_ALL_STATI = "Status information for indicators"
 
-    @classmethod
-    def init_data(cls):
-        cls.curr_cols = cls.get_cols_dict(cls.TABLE_NAME_ALL_STATI)
-        if not cls.curr_cols:
-            #init default column_dicts
-            cols_all = cls.curr_cols.setdefault('query_columns',{})
-            query_config = cls.curr_cols.setdefault('query_config',{'base':SingletonObservable})
+    ALL_STATI_TABLE_SPEC = {
+        'model' : SingletonObservable,
+        'filters' : [{
+        'status_thru__active' : True
+                }],
+        'COMMON_BASE' : [
+                ('status_thru__timestamp','Status Timestamp','0')  , #0
+                ('status_thru__status__most_permissive_tlp','lightest TLP','0')  , #1
+                ('status_thru__status__most_restrictive_tlp','darkest TLP','0')  , #2
+                ('status_thru__status__max_confidence','Max confidence','0'), #3
+                ('status_thru__status__best_processing','Processing','0'), #4
+                ('status_thru__status__kill_chain_phases','Kill Chain','0'), #5
+                ('type__name','Type','1'), #6
+                ('subtype__name','Subtype','1'), #7
+                ('value','Value','1'), #8
+                ('actionable_tags_cache','Tags','1'), #9
 
-            #cols to display in tables (query_select_row,col_name,searchable)
-            COLS_TO_DISPLAY = [
-                ('status_thru__timestamp','Status Timestamp','0')  ,
-                ('status_thru__status__most_permissive_tlp','lightest TLP','0')  ,
-                ('status_thru__status__most_restrictive_tlp','darkest TLP','0')  ,
-                ('status_thru__status__max_confidence','Max confidence','0'),
-                ('status_thru__status__best_processing','Processing','0'),
-                ('status_thru__status__kill_chain_phases','Kill Chain','0'),
-                ('type__name','Type','1'),
-                ('subtype__name','Subtype','1'),
-                ('value','Value','1'),
-                ('actionable_tags_cache','Tags','1')
-            ]
 
-            fillColDict(cols_all,COLS_TO_DISPLAY)
+            ],
+        'QUERY_ONLY' : [('id','XXX',0)],
+        'DISPLAY_ONLY' :  []
+
+    }
+
+    table_spec= {table_name_slug(TABLE_NAME_ALL_STATI):ALL_STATI_TABLE_SPEC}
 
     def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        offset = table_spec['offset']
+
         for row in q:
             row = list(row)
             row[1] = Status.TLP_MAP[row[1]]
@@ -520,12 +525,15 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
             row[3] = Status.CONFIDENCE_MAP[row[3]]
             row[4] = Status.PROCESSING_MAP[row[4]]
 
+            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+0]}),
+                                                                 row[8])
+
+            row = row[:-1]
+
             res['data'].append(row)
 
 
-    filter = [{
-        'status_thru__active' : True
-    }]
+
     #select_related = ['status_thru__status']
 
 
@@ -879,36 +887,41 @@ class SingletonObservableDetailView(BasicDetailView):
 
     model = SingletonObservable
 
-    prefetch_related = ['status_thru__status',
-                        'sources__related_stix_entities__entity_type', #0
-                        'sources__related_stix_entities', #1
-                        'sources__top_level_iobject_identifier__namespace', #2
-                        'sources__top_level_iobject_identifier', #3
-                        'sources__top_level_iobject_identifier__latest', #4
-                        'sources__import_info__namespace', #5
-                        'sources__import_info', #6
-                        'sources__import_info', #7
-    ]
+    prefetch_related = ['type','subtype']
 
+    title = "Indiator Details"
 
 
 
     stati_list = []
 
+    sources_list = []
+
     def get_context_data(self, **kwargs):
 
         context = super(SingletonObservableDetailView, self).get_context_data(**kwargs)
+
         if self.stati_list:
-            print "Retreiving existing"
+
             return self.stati_list
         else:
-            print "Calculating"
+
             self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
                                                     actionable_thru__content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
         context['stati'] = self.stati_list
 
-        for status in self.stati_list:
-            print status.actionable_thru.all()[0]
+        if self.sources_list:
+
+            return self.sources_list
+        else:
+
+            self.sources_list = Source.objects.filter(object_id=self.kwargs['pk'],
+                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
+        context['sources'] = self.sources_list
+
+
+
+
         return context
 
 

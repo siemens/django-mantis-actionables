@@ -7,6 +7,16 @@
 {% block left_column %}
 
 
+    <h1>
+    {% if object.subtype.name %}
+    {{ object.type.name }}/{{object.subtype.name}}: {{ object.value }}
+    {% else %}
+        {{ object.type.name }}: {{ object.value }}
+    {% endif %}
+    </h1>
+
+
+    <br/>
 
     <div class="grp-module grp-collapse grp-open">
       <h2 class="grp-collapse-handler">Status Infos</h2>
@@ -87,16 +97,22 @@
         <thead>
          <tr>
 
+           <th class="middle">Import Timestamp</th>
+
            <th class="middle"  >
-               Sources
+               Source
 
            </th>
          </tr>
          </thead>
         <tbody>
-          {% for source in object.sources.all %}
+          {% for source in sources %}
            <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
-            <td  class="w-1 nowrap middle">
+           <td class="w-1 nowrap middle">
+               {{ source.timestamp }}
+           </td>
+           <td class="w-1 nowrap middle">
+
 	      {% if source.top_level_iobject_identifier %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
               {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
