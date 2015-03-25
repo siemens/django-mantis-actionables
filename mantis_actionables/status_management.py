@@ -71,9 +71,9 @@ def updateStatus(status,*args,**kwargs):
         if source_obj.tlp != Source.TLP_UNKOWN and most_restrictive_tlp != Source.TLP_UNKOWN:
             most_restrictive_tlp = min(source_obj.tlp,most_restrictive_tlp)
         else:
-            # One of the two tlp values is 0, so this is the first time we
-            # see a tlp value, so the most_permissive is also the most_restrictive
-            most_restrictive_tlp = most_permissive_tlp
+            # One of the two tlp values is 0, so the most restrictive tlp is
+            # actually the maximum
+            most_restrictive_tlp = min(source_obj.tlp,most_restrictive_tlp)
 
         best_processing = max(source_obj.processing, best_processing)
 
