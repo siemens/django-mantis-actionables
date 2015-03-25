@@ -603,7 +603,9 @@ class Context(models.Model):
     title = models.CharField(max_length=256,blank=True,default='')
     description = models.TextField(blank=True,default='')
     timestamp = models.DateTimeField(auto_now_add=True)
-    related_incident_id = models.SlugField(max_length=40,blank=True)
+    related_incident_id = models.SlugField(max_length=40,
+                                           blank=True,
+                                           help_text="Enter here the number of the associated CERT incident")
 
     # type crowdstrike actor/report
     TYPE_INVESTIGATION = 10

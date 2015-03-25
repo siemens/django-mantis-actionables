@@ -1103,6 +1103,7 @@ class ActionablesContextEditView(BasicDetailView):
 
             if type != self.object.type:
 
+
                 # Rename dingos tag
                 try:
                     tag = Tag.objects.get(name=self.object.name)

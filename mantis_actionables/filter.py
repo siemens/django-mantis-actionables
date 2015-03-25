@@ -41,7 +41,7 @@ class ActionablesContextFilter(django_filters.FilterSet):
 
 class ImportInfoFilter(django_filters.FilterSet):
 
-    identifier__uri = django_filters.CharFilter(lookup_type='icontains',
+    namespace__uri = django_filters.CharFilter(lookup_type='icontains',
                                                 label='ID-Namespace contains')
 
 
@@ -56,7 +56,7 @@ class ImportInfoFilter(django_filters.FilterSet):
     class Meta:
         order_by = create_order_keyword_list(['timestamp','create_timestamp','name','title'])
         model = ImportInfo
-        fields = ['name','identifier__uri','timestamp','create_timestamp']
+        fields = ['name','namespace__uri','timestamp','create_timestamp']
 
 
 

@@ -52,7 +52,8 @@ class ContextEditForm(forms.Form):
     description = forms.CharField(max_length=4096,widget=widgets.Textarea(attrs={'class':'vTextField'}))
 
     type = forms.ChoiceField(choices=Context.TYPE_CHOICES)
-    related_incident_id = forms.SlugField(max_length=40,required=False)
+    related_incident_id = forms.SlugField(max_length=40,required=False,help_text="Enter here the number of the related CERT incident.",
+                                          label="CERT Incident Nr.")
 
     def clean(self):
         cleaned_data = super(ContextEditForm, self).clean()
@@ -62,6 +63,9 @@ class ContextEditForm(forms.Form):
         cleaned_data['new_context_name'] = ''
 
         if type != self.current_type:
+            if type == Context.TYPE_CERT_INCIDENT or self.current_type == Context.TYPE_CERT_INCIDENT:
+                raise forms.ValidationError("Cannot change a CERT incident to something else!")
+
             if not self.current_name.startswith(Context.TYPE_MAP[self.current_type]):
                 raise forms.ValidationError("Cannot change type because context name '%s' "
                                             "does not signify current context type '%s'" %(self.current_name,
