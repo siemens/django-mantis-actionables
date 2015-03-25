@@ -39,19 +39,18 @@ from taggit.models import Tag
 from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.forms import InvestigationForm
 from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
-from dingos.views import InfoObjectExportsView
-from dingos.models import IdentifierNameSpace,InfoObject, vIO2FValue
+
+
 from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
-from . import MANTIS_ACTIONABLES_DASHBOARD_CONTENTS
+
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
-from .mantis_import import singleton_observable_types
-from .tasks import async_export_to_actionables
+
 from .forms import ContextEditForm
 
-from dingos.models import vIO2FValue
+from dingos.models import vIO2FValue, Identifier
 
 from .tasks import actionable_tag_bulk_action
 
@@ -459,15 +458,34 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     table_spec[table_name_slug(TABLE_NAME_DINGOS_VALUES)] = DINGOS_VALUES_TABLE_SPEC
 
-    TABLE_NAME_INFOBJECT_NAMES = 'InfoObject Names'
+    TABLE_NAME_INFOBJECT_IDENTIFIER_UID = 'InfoObject Identifiers'
 
-    INFOOBJECT_NAMES_TABLE_SPEC = {
-        'model' : InfoObject,
-        'filters' : [{'latest_of__isnull':False}],
+    INFOOBJECT_IDENTIFIER_UID_TABLE_SPEC = {
+        'model' : Identifier,
+        'filters' : [{'latest__isnull':False}],
         'count': False,
         'COMMON_BASE' : [
-                ('identifier__namespace__uri','Namespace','0'),
-                ('identifier__uid','Identifier','0'),
+                ('namespace__uri','Namespace','0'),
+                ('uid','Identifier','1'),
+                ('latest__name','Name','1'),
+            ],
+        'QUERY_ONLY' : [('latest__id','XXX',0)],
+
+        'DISPLAY_ONLY' :  []
+
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_INFOBJECT_IDENTIFIER_UID)] = INFOOBJECT_IDENTIFIER_UID_TABLE_SPEC
+
+    TABLE_NAME_IMPORT_INFO_NAME = 'Import Info Names'
+
+    IMPORT_INFO_NAME_TABLE_SPEC = {
+        'model' : ImportInfo,
+        'filters' : [],
+        'count': False,
+        'COMMON_BASE' : [
+                ('namespace__uri','Namespace','0'),
+                ('uid','Identifier','1'),
                 ('name','Name','1'),
             ],
         'QUERY_ONLY' : [('id','XXX',0)],
@@ -476,7 +494,8 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     }
 
-    table_spec[table_name_slug(TABLE_NAME_INFOBJECT_NAMES)] = INFOOBJECT_NAMES_TABLE_SPEC
+    table_spec[table_name_slug(TABLE_NAME_IMPORT_INFO_NAME)] = IMPORT_INFO_NAME_TABLE_SPEC
+
 
 
     def postprocess(self,table_name,res,q):
@@ -490,13 +509,22 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
-        elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_NAMES):
+        elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_IDENTIFIER_UID):
             offset = table_spec['offset']
             for row in q:
                 row = list(row)
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
+        elif table_name == table_name_slug(self.TABLE_NAME_IMPORT_INFO_NAME):
+            offset = table_spec['offset']
+            for row in q:
+                row = list(row)
+                row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
+                                                                 row[2])
+                res['data'].append(row)
+
+
 
 
 
@@ -636,7 +664,8 @@ class UnifiedSearch(BasicDatatableView):
 
     table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS,
                   data_provider_class.TABLE_NAME_DINGOS_VALUES,
-data_provider_class.TABLE_NAME_INFOBJECT_NAMES]
+                  data_provider_class.TABLE_NAME_INFOBJECT_IDENTIFIER_UID,
+                  data_provider_class.TABLE_NAME_IMPORT_INFO_NAME]
 
 
 
