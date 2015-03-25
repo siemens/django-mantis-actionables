@@ -458,7 +458,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     table_spec[table_name_slug(TABLE_NAME_DINGOS_VALUES)] = DINGOS_VALUES_TABLE_SPEC
 
-    TABLE_NAME_INFOBJECT_IDENTIFIER_UID = 'InfoObject Identifiers'
+    TABLE_NAME_INFOBJECT_IDENTIFIER_UID = 'InfoObject Identifiers and Names'
 
     INFOOBJECT_IDENTIFIER_UID_TABLE_SPEC = {
         'model' : Identifier,
@@ -485,7 +485,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
         'count': False,
         'COMMON_BASE' : [
                 ('namespace__uri','Namespace','0'),
-                ('uid','Identifier','1'),
+                ('uid','Identifier','0'),
                 ('name','Name','1'),
             ],
         'QUERY_ONLY' : [('id','XXX',0)],
