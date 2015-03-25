@@ -123,9 +123,19 @@
         });
 
         // Make the search input in the headline search the tables
+        var oi_tmp = initial_filter;
         var si = $('input[name="search_term"]').first();
         si.val(initial_filter).on('keyup', function(){
-            $('.result_filter').val($(this).val()).trigger('keyup');
+            var ni = $(this).val();
+            if(oi_tmp!=ni){
+                oi_tmp = ni;
+                $('.result_filter').val(ni).trigger('keyup');
+            }
+        }).on('keypress', function(e){
+            if(initial_filter != ''){
+                if((e.keyCode || e.which || e.charCode)==13)
+                    return false;
+            }
         });
 
     });
