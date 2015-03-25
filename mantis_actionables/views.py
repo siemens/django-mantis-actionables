@@ -191,10 +191,6 @@ def datatable_query(post, paginate_at, **kwargs):
     if start<0:
         start = 0
     if length>0:
-        print "Slice"
-        print start
-        print length
-
         q = q[start:start+length]
         params.append(length)
         params.append(start)
@@ -225,7 +221,7 @@ class BasicTableDataProvider(BasicJSONView):
     def post(self, request, *args, **kwargs):
         POST = request.POST
         table_name = POST.get('table_type').replace(' ','_')
-        logger.info("Received data query from user %s for table %s" % (request.user,table_name))
+        logger.debug("Received data query from user %s for table %s" % (request.user,table_name))
         return super(BasicTableDataProvider,self).post(request,*args,**kwargs)
 
     view_name = ""
@@ -317,13 +313,13 @@ class BasicTableDataProvider(BasicJSONView):
                 }
 
         table_name = POST.get('table_type').replace(' ','_')
-        logger.info("About to start database query for user %s for table %s" % (self.request.user,table_name))
+        logger.debug("About to start database query for user %s for table %s" % (self.request.user,table_name))
         q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
         q = list(q)
-        logger.info("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
+        logger.debug("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
 
         self.postprocess(table_name,res,q)
-        logger.info("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
+        logger.debug("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
         return res
 
 def table_name_slug(table_name):
@@ -988,10 +984,10 @@ class SingletonObservableDetailView(BasicDetailView):
 
     @property
     def stati(self):
-        print "Stati called"
+        logger.debug("Stati called")
         self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
                                                     actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
-        print "Done"
+        logger.debug("Done")
         return self.stati_list
 
 
