@@ -941,10 +941,15 @@ class SingletonObservableDetailView(BasicDetailView):
         else:
 
             self.sources_list = Source.objects.filter(object_id=self.kwargs['pk'],
-                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
+                                                      content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp").\
+                prefetch_related('top_level_iobject_identifier__latest',
+                                 'iobject_identifier__latest',
+                                 'iobject_identifier__latest__iobject_type',
+                                 'top_level_iobject_identifier__namespace',
+                                 'import_info',
+                                 'import_info__namespace'
+                               )
         context['sources'] = self.sources_list
-
-
 
 
         return context
