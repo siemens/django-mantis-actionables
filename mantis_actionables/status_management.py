@@ -73,7 +73,7 @@ def updateStatus(status,*args,**kwargs):
         else:
             # One of the two tlp values is 0, so the most restrictive tlp is
             # actually the maximum
-            most_restrictive_tlp = min(source_obj.tlp,most_restrictive_tlp)
+            most_restrictive_tlp = max(source_obj.tlp,most_restrictive_tlp)
 
         best_processing = max(source_obj.processing, best_processing)
 
