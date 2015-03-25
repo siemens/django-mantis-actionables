@@ -367,16 +367,16 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         for row in q:
             row = [escape(e) for e in list(row)]
 
-            row[1] = Source.TLP_COLOR_CSS.get(row[1],"ERROR")
+            row[1] = Source.TLP_COLOR_CSS.get(int(row[1]),"ERROR")
             if row[offset+0]:
-                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':int(row[offset+2])}),
                                                                  row[offset+1])
             else:
                 row[offset+0] = row[offset+3]
-                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+5]}),
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':int(row[offset+5])}),
                                                                  row[offset+4])
 
-            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+6]}),
+            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':int(row[offset+6])}),
                                                                  row[4])
 
             row = row[:-5]
@@ -553,13 +553,13 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = [escape(e) for e in list(row)]
-            row[1] = Status.TLP_MAP[row[1]]
-            row[2] = Status.TLP_MAP[row[2]]
-            row[3] = Status.CONFIDENCE_MAP[row[3]]
-            row[4] = Status.PROCESSING_MAP[row[4]]
+            row = list([escape(e) for e in list(row)])
+            row[1] = Status.TLP_MAP[int(row[1])]
+            row[2] = Status.TLP_MAP[int(row[2])]
+            row[3] = Status.CONFIDENCE_MAP[int(row[3])]
+            row[4] = Status.PROCESSING_MAP[int(row[4])]
 
-            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+0]}),
+            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':int(row[offset+0])}),
                                                                  row[8])
 
             row = row[:-1]
