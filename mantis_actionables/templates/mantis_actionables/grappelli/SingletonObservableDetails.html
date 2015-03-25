@@ -113,7 +113,7 @@
            </td>
            <td class="w-1 nowrap middle">
 
-	      {% if source.top_level_iobject_identifier %}
+	      {% if source.top_level_iobject_identifier_id %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
               {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
                 {{ source.iobject_identifier.latest.iobject_type.name }}
