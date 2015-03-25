@@ -608,12 +608,16 @@ class Context(models.Model):
     # type crowdstrike actor/report
     TYPE_INVESTIGATION = 10
     TYPE_INCIDENT= 20
+    TYPE_CERT_INCIDENT= 30
     TYPE_CHOICES = [
         (TYPE_INVESTIGATION, "INVES"),
         (TYPE_INCIDENT, "IR"),
+        (TYPE_CERT_INCIDENT, "CERT"),
     ]
 
     TYPE_MAP = dict(TYPE_CHOICES)
+
+    TYPE_RMAP = dict(map(lambda x: (x[1].lower(),x[0]),TYPE_CHOICES))
 
     type = models.SmallIntegerField(choices=TYPE_CHOICES, default=TYPE_INVESTIGATION)
 
@@ -690,7 +694,9 @@ class ActionableTag(models.Model):
         context_name_set = set([])
         for (context_name,tag_name) in context_name_pairs:
 
-            context,created = Context.cached_objects.get_or_create(name=context_name)
+            context,created = Context.cached_objects.get_or_create(name=context_name,
+                                                                   defaults={'type':Context.TYPE_RMAP.get(context_name.split('-')[0].lower(),
+                                                                                                          Context.TYPE_INVESTIGATION)})
 
             context_name_set.add(context_name)
 
