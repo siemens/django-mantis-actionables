@@ -33,6 +33,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponseRedirect
 from django.core.urlresolvers import reverse
+from django.utils.html import escape
 
 from django.contrib import messages
 from taggit.models import Tag
@@ -74,27 +75,18 @@ def safe_cast(val, to_type, default=None):
 
 def datatable_query(post, paginate_at, **kwargs):
 
-
     post_dict = parser.parse(str(post.urlencode()))
-
-
 
     # Collect prepared statement parameters in here
     params = []
-
-
     cols = kwargs.pop('query_columns')
-
     display_cols = kwargs.pop('display_columns')
-
     config = kwargs.pop('query_config')
-
+    
     q = config['base'].objects
-
     base_filters = config.get('filters',[])
 
     count =config.get('count',True)
-
     cols = dict((x, y[0]) for x, y in cols.items())
 
     display_cols = dict((x, y[0]) for x, y in display_cols.items())
@@ -196,7 +188,7 @@ def datatable_query(post, paginate_at, **kwargs):
         params.append(start)
 
     #return (q,-1,-1)
-    return (q,q_count_all,q_count_filtered)
+    return (q, q_count_all,q_count_filtered)
 
 
 class BasicTableDataProvider(BasicJSONView):
@@ -300,7 +292,7 @@ class BasicTableDataProvider(BasicJSONView):
         POST[u'length'] = "%s" % self.table_rows
 
 
-        table_name = POST.get('table_type').replace(' ','_')
+        table_name = POST.get('table_type','').replace(' ','_')
 
 
         config_info = self.get_curr_cols(table_name)
@@ -312,7 +304,6 @@ class BasicTableDataProvider(BasicJSONView):
                 'query_config' : config_info['query_config'],
                 }
 
-        table_name = POST.get('table_type').replace(' ','_')
         logger.debug("About to start database query for user %s for table %s" % (self.request.user,table_name))
         q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
         q = list(q)
@@ -374,7 +365,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = list(row)
+            row = [escape(e) for e in list(row)]
 
             row[1] = Source.TLP_COLOR_CSS.get(row[1],"ERROR")
             if row[offset+0]:
@@ -501,27 +492,24 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
         elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_IDENTIFIER_UID):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_IMPORT_INFO_NAME):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
-
-
-
 
 
     table_rows = 10
@@ -565,7 +553,7 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = list(row)
+            row = [escape(e) for e in list(row)]
             row[1] = Status.TLP_MAP[row[1]]
             row[2] = Status.TLP_MAP[row[2]]
             row[3] = Status.CONFIDENCE_MAP[row[3]]
