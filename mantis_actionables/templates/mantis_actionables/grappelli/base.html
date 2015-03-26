@@ -22,7 +22,7 @@
 {% endblock extrastyle%}
 {% block javascripts %}
     {{ block.super }}
-    <script data-main="{% static 'mantis_actionables/js/' %}" src="{% static 'mantis_actionables/js/require.js' %}"></script>
+    <script src="{% static 'mantis_actionables/js/jquery.dataTables.min.js' %}"></script>
     <script src="{% static 'mantis_actionables/js/mantis_actionables.js' %}"></script>
 {% endblock javascripts %}
 {% block content %}

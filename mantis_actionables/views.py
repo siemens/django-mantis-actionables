@@ -33,6 +33,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponseRedirect
 from django.core.urlresolvers import reverse
+from django.utils.html import escape
 
 from django.contrib import messages
 from taggit.models import Tag
@@ -74,27 +75,18 @@ def safe_cast(val, to_type, default=None):
 
 def datatable_query(post, paginate_at, **kwargs):
 
-
     post_dict = parser.parse(str(post.urlencode()))
-
-
 
     # Collect prepared statement parameters in here
     params = []
-
-
     cols = kwargs.pop('query_columns')
-
     display_cols = kwargs.pop('display_columns')
-
     config = kwargs.pop('query_config')
-
+    
     q = config['base'].objects
-
     base_filters = config.get('filters',[])
 
     count =config.get('count',True)
-
     cols = dict((x, y[0]) for x, y in cols.items())
 
     display_cols = dict((x, y[0]) for x, y in display_cols.items())
@@ -191,16 +183,12 @@ def datatable_query(post, paginate_at, **kwargs):
     if start<0:
         start = 0
     if length>0:
-        print "Slice"
-        print start
-        print length
-
         q = q[start:start+length]
         params.append(length)
         params.append(start)
 
     #return (q,-1,-1)
-    return (q,q_count_all,q_count_filtered)
+    return (q, q_count_all,q_count_filtered)
 
 
 class BasicTableDataProvider(BasicJSONView):
@@ -225,7 +213,7 @@ class BasicTableDataProvider(BasicJSONView):
     def post(self, request, *args, **kwargs):
         POST = request.POST
         table_name = POST.get('table_type').replace(' ','_')
-        logger.info("Received data query from user %s for table %s" % (request.user,table_name))
+        logger.debug("Received data query from user %s for table %s" % (request.user,table_name))
         return super(BasicTableDataProvider,self).post(request,*args,**kwargs)
 
     view_name = ""
@@ -304,7 +292,7 @@ class BasicTableDataProvider(BasicJSONView):
         POST[u'length'] = "%s" % self.table_rows
 
 
-        table_name = POST.get('table_type').replace(' ','_')
+        table_name = POST.get('table_type','').replace(' ','_')
 
 
         config_info = self.get_curr_cols(table_name)
@@ -316,14 +304,13 @@ class BasicTableDataProvider(BasicJSONView):
                 'query_config' : config_info['query_config'],
                 }
 
-        table_name = POST.get('table_type').replace(' ','_')
-        logger.info("About to start database query for user %s for table %s" % (self.request.user,table_name))
+        logger.debug("About to start database query for user %s for table %s" % (self.request.user,table_name))
         q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
         q = list(q)
-        logger.info("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
+        logger.debug("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
 
         self.postprocess(table_name,res,q)
-        logger.info("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
+        logger.debug("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
         return res
 
 def table_name_slug(table_name):
@@ -378,18 +365,18 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = list(row)
+            row = [escape(e) for e in list(row)]
 
-            row[1] = Source.TLP_COLOR_CSS.get(row[1],"ERROR")
+            row[1] = Source.TLP_COLOR_CSS.get(int(row[1]),"ERROR")
             if row[offset+0]:
-                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+2]}),
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':int(row[offset+2])}),
                                                                  row[offset+1])
             else:
                 row[offset+0] = row[offset+3]
-                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+5]}),
+                row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':int(row[offset+5])}),
                                                                  row[offset+4])
 
-            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+6]}),
+            row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':int(row[offset+6])}),
                                                                  row[4])
 
             row = row[:-5]
@@ -505,27 +492,24 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
         elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_IDENTIFIER_UID):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_IMPORT_INFO_NAME):
             offset = table_spec['offset']
             for row in q:
-                row = list(row)
+                row = [escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
-
-
-
 
 
     table_rows = 10
@@ -569,13 +553,13 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = list(row)
-            row[1] = Status.TLP_MAP[row[1]]
-            row[2] = Status.TLP_MAP[row[2]]
-            row[3] = Status.CONFIDENCE_MAP[row[3]]
-            row[4] = Status.PROCESSING_MAP[row[4]]
+            row = list([escape(e) for e in list(row)])
+            row[1] = Status.TLP_MAP[int(row[1])]
+            row[2] = Status.TLP_MAP[int(row[2])]
+            row[3] = Status.CONFIDENCE_MAP[int(row[3])]
+            row[4] = Status.PROCESSING_MAP[int(row[4])]
 
-            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':row[offset+0]}),
+            row[8] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':int(row[offset+0])}),
                                                                  row[8])
 
             row = row[:-1]
@@ -988,10 +972,10 @@ class SingletonObservableDetailView(BasicDetailView):
 
     @property
     def stati(self):
-        print "Stati called"
+        logger.debug("Stati called")
         self.stati_list = Status.objects.filter(actionable_thru__object_id=self.kwargs['pk'],
                                                     actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
-        print "Done"
+        logger.debug("Done")
         return self.stati_list
 
 
