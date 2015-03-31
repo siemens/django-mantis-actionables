@@ -45,14 +45,22 @@
            <td class="w-1 nowrap middle">{{ singleton.subtype.name }}</td>
            <td class="w-1 nowrap middle">{{ singleton.value }}</td>
            <td class="middle">
-            <div id="tags" class="tag-block" data-obj-id="{{ singleton.pk }}" style="float: left;" data-curr-context="">
-            {% view_apply 'object2tags' singleton as tags%}
-            {% if tags %}
-                {%  for tag in tags %}
-                {% show_TagDisplay tag 'actionables' False tag_context=tag%}
+
+            {% view_apply 'object2tags' singleton as contexts%}
+            {% if contexts %}
+                {%  for context in contexts %}
+                {% with context_tags=contexts|get_value:context %}
+                {%  for tag in context_tags %}
+
+                                <div id="tags" class="tag-block" data-obj-id="{{ singleton.pk }}" style="float: left;" data-curr-context={{ context }}>
+                                    {% show_TagDisplay tag 'actionables' True tag_context=context%}
+
+            </div>
+                {% endfor %}
+                {% endwith %}
                 {% endfor %}
             {% endif %}
-            </div>
+
           </td>
          {% endfor %}
         </tbody>

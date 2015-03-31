@@ -1016,12 +1016,16 @@ class ImportInfoDetailsView(BasicFilterView):
             tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
                                                      'actionable_tags__actionable_tag__tag__name')
             for pk,context_name,tag_name in tag_infos:
-                if context_name == tag_name:
-                    set_dict(self.object2tag_map,tag_name,'append',pk)
-
+                if True: #context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',pk,context_name)
+            print self.object2tag_map
 
         if object:
-            return sorted(self.object2tag_map.get(object.pk,[]))
+            return self.object2tag_map.get(object.pk)
+            result = sorted(self.object2tag_map.get(object.pk,[]))
+            print result
+            return result
+
 
 
     def post(self, request, *args, **kwargs):
