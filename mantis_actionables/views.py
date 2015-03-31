@@ -477,13 +477,14 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
         'filters' : [],
         'count': False,
         'COMMON_BASE' : [
-                ('namespace__uri','Namespace','0'),
-                ('uid','Identifier','0'),
-                ('name','Name','1'),
+                ('create_timestamp','Import Timestamp','0'),#0
+                ('namespace__uri','Namespace','0'),#1
+                ('uid','Identifier','0'),#2
+                ('name','Name','1'),#3
             ],
         'QUERY_ONLY' : [('id','XXX',0)],
 
-        'DISPLAY_ONLY' :  []
+        'DISPLAY_ONLY' :  [('tags','Tags','0')]
 
     }
 
@@ -511,11 +512,38 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_IMPORT_INFO_NAME):
             offset = table_spec['offset']
+            import_info_pks = map(lambda x: x[offset+0],q)
+
+            self.object2tag_map = {}
+            tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk',
+                                                                             'actionable_tags__actionable_tag__context__name',
+                                                                             'actionable_tags__actionable_tag__tag__name')
+            tag_map = {}
+
+            for pk,context_name,tag_name in tag_infos:
+                if context_name and context_name == tag_name:
+
+                    set_dict(tag_map,context_name,'append',int(pk))
+
+
+
             for row in q:
+
                 row = [my_escape(e) for e in list(row)]
-                row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
-                                                                 row[2])
+                row[3] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
+                                                                 row[3])
+
+                tag_list = tag_map.get(int(row[offset+0]))
+                if tag_list:
+
+                    tag_list = ", ".join(tag_list)
+                else:
+                    tag_list = ""
+                row[4] = tag_list
                 res['data'].append(row)
+
+
+
 
 
     table_rows = 10
