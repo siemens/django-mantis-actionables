@@ -145,7 +145,7 @@ def datatable_query(post, paginate_at, **kwargs):
 
             if post_dict['columns'][n]['searchable'] == "true":
                 col_search.append({
-                    c + '__contains' : sv
+                    c + '__icontains' : sv
                 })
 
     if col_search:
