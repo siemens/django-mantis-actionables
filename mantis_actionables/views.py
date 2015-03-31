@@ -63,6 +63,12 @@ CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonO
 #init column_dict
 COLS = {}
 
+def my_escape(value):
+    if not value:
+        return value
+    else:
+        return(escape(value))
+
 def fillColDict(colsDict,cols):
     for index,col in zip(range(len(cols)),cols):
         colsDict[index] = col
@@ -365,10 +371,10 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = [escape(e) for e in list(row)]
+            row = [my_escape(e) for e in list(row)]
 
             row[1] = Source.TLP_COLOR_CSS.get(int(row[1]),"ERROR")
-            if row[offset+0]:
+            if row[offset+2]:
                 row[offset+1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':int(row[offset+2])}),
                                                                  row[offset+1])
             else:
@@ -492,21 +498,21 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
         elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
             offset = table_spec['offset']
             for row in q:
-                row = [escape(e) for e in list(row)]
+                row = [my_escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_INFOBJECT_IDENTIFIER_UID):
             offset = table_spec['offset']
             for row in q:
-                row = [escape(e) for e in list(row)]
+                row = [my_escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_IMPORT_INFO_NAME):
             offset = table_spec['offset']
             for row in q:
-                row = [escape(e) for e in list(row)]
+                row = [my_escape(e) for e in list(row)]
                 row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':row[offset+0]}),
                                                                  row[2])
                 res['data'].append(row)
@@ -553,7 +559,7 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
         offset = table_spec['offset']
 
         for row in q:
-            row = list([escape(e) for e in list(row)])
+            row = list([my_escape(e) for e in list(row)])
             row[1] = Status.TLP_MAP[int(row[1])]
             row[2] = Status.TLP_MAP[int(row[2])]
             row[3] = Status.CONFIDENCE_MAP[int(row[3])]
