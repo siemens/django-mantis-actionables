@@ -423,8 +423,8 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
 
                 ('sources__timestamp','Source TS','0'), #0
                 ('sources__tlp','TLP','0'), #1
-                ('type__name','Type','1'), #2
-                ('subtype__name','Subtype','1'), #3
+                ('type__name','Type','0'), #2
+                ('subtype__name','Subtype','0'), #3
                 ('value','Value','0'), #4
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
                 ('sources__related_stix_entities__essence','Context Info','1'), #6
