@@ -1,4 +1,4 @@
-# Copyright (c) Siemens AG, 2013
+# Copyright (c) Siemens AG, 2015
 #
 # This file is part of MANTIS.  MANTIS is free software: you can
 # redistribute it and/or modify it under the terms of the GNU General Public
