@@ -1,4 +1,3 @@
-__author__ = 'Philipp Lang'
 
 # -*- coding: utf-8 -*-
 

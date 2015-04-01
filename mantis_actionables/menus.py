@@ -1,4 +1,4 @@
-# Copyright (c) Siemens AG, 2014
+# Copyright (c) Siemens AG, 2015
 #
 # This file is part of MANTIS.  MANTIS is free software: you can
 # redistribute it and/or modify it under the terms of the GNU General Public
@@ -45,7 +45,7 @@ if dashboard_index_url:
 else:
     Menu.add_item("mantis_main",
               MenuItem("Actionables",
-                       reverse("actionables_imports"),
+                       reverse("actionables_all_imports"),
                        weight = 5,
                        check = lambda request: request.user.is_authenticated(),
                        children = (

@@ -1,4 +1,4 @@
-# Copyright (c) Siemens AG, 2014
+# Copyright (c) Siemens AG, 2015
 #
 # This file is part of MANTIS.  MANTIS is free software: you can
 # redistribute it and/or modify it under the terms of the GNU General Public
@@ -408,6 +408,47 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
         #
 
 
+class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTableDataProvider):
+
+    view_name = "singletons_with_source_one_table_contextfilter"
+
+    table_spec =  {}
+
+    TABLE_NAME_ALL_IMPORTS_F_CONTEXT = 'Indicators by Source filtered by context'
+
+    ALL_IMPORTS_TABLE_SPEC_F_CONTEXT = {
+        'model' : SingletonObservable,
+        'count': False,
+        'COMMON_BASE' : [
+
+                ('sources__timestamp','Source TS','0'), #0
+                ('sources__tlp','TLP','0'), #1
+                ('type__name','Type','1'), #2
+                ('subtype__name','Subtype','1'), #3
+                ('value','Value','0'), #4
+                ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
+                ('sources__related_stix_entities__essence','Context Info','1'), #6
+            ],
+        'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
+
+                             #('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
+                             #('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
+                             ('sources__top_level_iobject__name','Report Name','0'), #1
+                             ('sources__top_level_iobject_id','Report InfoObject PK','0'), #2
+                             ('sources__import_info__namespace__uri','Report Source','0'), #3
+                             ('sources__import_info__name','Report Name','0'), #4
+                             ('sources__import_info_id','Report Import Info PK','0'), #5,
+                             ('id','Singleton Observable PK','0') #6
+                            ],
+        'DISPLAY_ONLY' :  [('','Report Source','0'),
+                             ('','Report Name','0'),
+                             ]
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
+
+
+
 
 class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
     view_name = "unified_search"
@@ -416,7 +457,11 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
 
+    TABLE_NAME_ALL_IMPORTS_F_CONTEXT = 'Indicators by Source filtered by context'
+
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_TABLE_SPEC
+
+    table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = SingeltonObservablesWithSourceOneTableDataProviderFilterByContext.ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
 
 
     #COLS_TO_DISPLAY = [
@@ -493,7 +538,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     def postprocess(self,table_name,res,q):
         table_spec = self.table_spec[table_name]
-        if table_name == table_name_slug(self.TABLE_NAME_ALL_IMPORTS):
+        if table_name in [table_name_slug(self.TABLE_NAME_ALL_IMPORTS), table_name_slug(self.TABLE_NAME_ALL_IMPORTS_F_CONTEXT)]:
             return SingeltonObservablesWithSourceOneTableDataProvider.ALL_IMPORTS_POSTPROCESSOR(table_spec,res,q)
         elif table_name == table_name_slug(self.TABLE_NAME_DINGOS_VALUES):
             offset = table_spec['offset']
@@ -680,6 +725,7 @@ class UnifiedSearch(BasicDatatableView):
     title = 'Unified Search'
 
     table_spec = [data_provider_class.TABLE_NAME_ALL_IMPORTS,
+                  data_provider_class.TABLE_NAME_ALL_IMPORTS_F_CONTEXT,
                   data_provider_class.TABLE_NAME_DINGOS_VALUES,
                   data_provider_class.TABLE_NAME_INFOBJECT_IDENTIFIER_UID,
                   data_provider_class.TABLE_NAME_IMPORT_INFO_NAME]
