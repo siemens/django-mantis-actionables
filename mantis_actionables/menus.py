@@ -45,7 +45,7 @@ if dashboard_index_url:
 else:
     Menu.add_item("mantis_main",
               MenuItem("Actionables",
-                       reverse("actionables_imports"),
+                       reverse("actionables_all_imports"),
                        weight = 5,
                        check = lambda request: request.user.is_authenticated(),
                        children = (
