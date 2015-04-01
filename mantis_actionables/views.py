@@ -159,6 +159,7 @@ def datatable_query(post, paginate_at, **kwargs):
         # Query the model
         q = q.filter(query)
 
+    print q.query
 
     # Treat the ordering of columns
     order_cols = []
@@ -337,16 +338,14 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
                 ('sources__timestamp','Source TS','0'), #0
                 ('sources__tlp','TLP','0'), #1
-                ('type__name','Type','1'), #2
-                ('subtype__name','Subtype','1'), #3
+                ('type__name','Type','0'), #2
+                ('subtype__name','Subtype','0'), #3
                 ('value','Value','1'), #4
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
                 ('sources__related_stix_entities__essence','Context Info','0'), #6
             ],
         'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
 
-                             #('sources__top_level_iobject_identifier__latest__name','Report Name','0'), #1
-                             #('sources__top_level_iobject_identifier__latest_id','Report InfoObject PK','0'), #2
                              ('sources__top_level_iobject__name','Report Name','0'), #1
                              ('sources__top_level_iobject_id','Report InfoObject PK','0'), #2
                              ('sources__import_info__namespace__uri','Report Source','0'), #3
