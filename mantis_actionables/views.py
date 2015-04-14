@@ -40,7 +40,7 @@ from taggit.models import Tag
 from dingos import DINGOS_TEMPLATE_FAMILY
 from dingos.forms import InvestigationForm
 from dingos.view_classes import BasicJSONView, BasicTemplateView, BasicFilterView, BasicUpdateView, BasicDetailView,BasicListView
-
+from dingos.views import getTagsbyModel
 
 from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
@@ -159,7 +159,6 @@ def datatable_query(post, paginate_at, **kwargs):
         # Query the model
         q = q.filter(query)
 
-    print q.query
 
     # Treat the ordering of columns
     order_cols = []
@@ -717,6 +716,7 @@ class UnifiedSearch(BasicDatatableView):
             return self.request.GET.get('search_term')
         else:
             return self.kwargs.get('search_term','')
+
     data_provider_class = UnifiedSearchSourceDataProvider
 
     template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
@@ -839,20 +839,49 @@ class ActionablesContextView(BasicFilterView):
     object2tag_map = {}
 
 
-    def object2tags(self,object):
+
+    def object2tags(self,object,type='SingletonObservable'):
+
         if not self.object2tag_map or not object:
 
+            # Compile tag info for SingletonObservables
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
                                                      'actionable_tags__actionable_tag__tag__name')
 
             for pk,context_name,tag_name in tag_infos:
                 if context_name == self.curr_context_name:
-                    set_dict(self.object2tag_map,tag_name,'append',pk)
+                    set_dict(self.object2tag_map,tag_name,'append',('SingletonObservable',pk))
+
+            # Compile tag info for Top-Level-Identifiers  in sources
+
+            iobject_pks = self.object_list.values_list('sources__top_level_iobject__identifier',flat=True)
+
+            tag_infos = getTagsbyModel(iobject_pks,model=Identifier)
+
+            for pk,tag_list in tag_infos.items():
+                set_dict(self.object2tag_map,tag_list,'set',('Identifier',pk))
+
+            # Compile tag info for ImportInfos in sources:
+
+            import_info_pks = self.object_list.values_list('sources__import_info',flat=True)
+
+            tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk','actionable_tags__actionable_tag__context__name',
+                                                     'actionable_tags__actionable_tag__tag__name')
+
+            for pk,context_name,tag_name in tag_infos:
+                if context_name == tag_name:
+                    set_dict(self.object2tag_map,tag_name,'append',('ImportInfo',pk))
+
+
 
 
         if object:
-            return sorted(self.object2tag_map.get(object.pk,[]))
+
+            return sorted(self.object2tag_map.get((type,object.pk),[]))
+
+
+
 
 
 
@@ -1091,13 +1120,10 @@ class ImportInfoDetailsView(BasicFilterView):
             for pk,context_name,tag_name in tag_infos:
                 if True: #context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk,context_name)
-            print self.object2tag_map
+
 
         if object:
             return self.object2tag_map.get(object.pk)
-            result = sorted(self.object2tag_map.get(object.pk,[]))
-            print result
-            return result
 
 
 
