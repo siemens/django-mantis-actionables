@@ -73,10 +73,18 @@
                 {% endif %}
 
                 in Report {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
+
+
                 {%  if stix_tl_obj_url %}
                 <a href="{{ stix_tl_obj_url }}">
                      <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
                 </a>
+
+               {% view_apply 'object2tags' source.top_level_iobject_identifier type='Identifier' as ident_tags%}
+               {% if ident_tags %}
+                {% show_TagDisplay ident_tags 'dingos' False%}
+               {% endif %}
+
                 {% endif %}
 
               {% else %}
@@ -88,6 +96,12 @@
                 </a>
                 {% endif %}
                     {{ source.import_info.namespace.uri}} '{{ source.import_info.name }}'
+
+               {% view_apply 'object2tags' source.import_info type='ImportInfo' as importinfo_tags%}
+               {% if importinfo_tags %}
+                {% show_TagDisplay importinfo_tags 'actionables' False%}
+               {% endif %}
+
 
 	      {% endif %}
 
