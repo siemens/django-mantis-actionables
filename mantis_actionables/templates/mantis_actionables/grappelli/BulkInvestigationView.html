@@ -1,0 +1,133 @@
+{% extends "dingos/grappelli/lists/base_lists_two_column.html" %}
+
+{% comment %}
+Copyright (c) Siemens AG, 2013
+
+This file is part of MANTIS.  MANTIS is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation; either version 2
+of the License, or(at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 51
+Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+{% endcomment %}
+
+{% load dingos_tags %}
+{% load tagging_widgets %}
+
+
+{% block objects %}
+
+
+
+    {% if object_list %}
+
+      <div class="grp-module grp-changelist-results">
+
+        <table id="result_list" cellspacing="0" class="grp-sortable">
+
+                {% block header_row %}
+           	  <thead>
+                    <tr>
+                        <th scope="col" class="action-checkbox-column">
+                            <div class="grp-text"><span><input id="action-toggle" type="checkbox" {% if not view.indicator_pks %}checked{% endif %}></span></div>
+                        </th>
+                        <th>Typ</th>
+                        <th>Subtype</th>
+                        <th>Value</th>
+                        <th>Import Info</th>
+                    </tr>
+		  </thead>
+                {% endblock %}
+
+
+                {% block rows %}
+                    <tbody>
+
+                    {% for obj in object_list %}
+                        <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+                            <td class="action-input">
+                                <input class="action-select" name="action_objects" value="{{ obj.pk }}" type="checkbox" {% if not view.indicator_pks or obj.pk in view.indicator_pks %}checked{% endif %}>
+                            </td>
+
+                            <td>
+                                {{ obj.type }}
+                            </td>
+                            <td>
+                                {{ obj.subtype }}
+                            </td>
+                            <td>
+                                {{ obj.value }}
+                            </td>
+                            <td>
+                                {% for import_info_pk in view.indicator2importinfo|get_value:obj.pk %}
+                                {% with import_info_details=view.importinfo_pks2info|get_value:import_info_pk %}
+                                    {% if not forloop.last %}
+                                        {{ import_info_details.name }}<br />
+                                    {% else %}
+                                        {{ import_info_details.name }}
+                                    {% endif %}
+                                {% endwith %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+
+                    {% endfor %}
+                    </tbody>
+                {% endblock %}
+            </table>
+            {% if list_actions %}
+                </form>
+            {% endif %}
+        </div>
+  {%  endif %}
+{% endblock %}
+
+{% block right_column %}
+    {% show_InvestigationAction %}
+    <script>
+     (function($)
+     {
+        $(document).ready(function() {
+             $("form#investigation").submit(function(event){
+                var checked_inputs = $("tr input.action-select:checked");
+                var pks = "";
+                checked_inputs.each(function(index) {
+                    if(index == 0) {
+                        pks += $(this).val();
+                    }
+                    else {
+                        pks += ",";
+                        pks += $(this).val();
+                    }
+                });
+
+                $('<input />').attr('type', 'hidden')
+                        .attr('name', "pks")
+                        .attr('value', pks)
+                        .appendTo('form#investigation');
+                return true;
+            });
+
+            $("input#action-toggle").change(function() {
+                var _new_state = this.checked;
+                $("tr input.action-select").each(function(index) {
+                    console.log(this);
+                    $(this).prop('checked', _new_state);
+                });
+            })
+
+        });
+     })(grp.jQuery);
+    </script>
+    {{ block.super }}
+
+{% endblock %}
+
+

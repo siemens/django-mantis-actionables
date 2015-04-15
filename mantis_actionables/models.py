@@ -540,7 +540,7 @@ class IDSSignature(models.Model):
 
     status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
 
-    sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
+    sources = generic.GenericRelation(Source,related_query_name='ids_signature')
 
     class Meta:
         unique_together = ('type', 'value')

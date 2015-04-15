@@ -34,6 +34,8 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
                 {% block header_row %}
            	  <thead>
                     <tr>
+                        {% include "dingos/grappelli/includes/CheckboxActionHeaderColumn.html" %}
+
                         <th scope="col"  class="sortable column-created">
                             {% render_table_ordering "timestamp" "Import Timestamp" %}
                         </th>
@@ -58,6 +60,8 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
                     {% for obj in object_list %}
                         <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+                            {% include "dingos/grappelli/includes/CheckboxActionColumn.html" %}
+
                             <td>
                                 {{obj.timestamp | date:"Y-m-d H:i:s O"}}
                             </td>
