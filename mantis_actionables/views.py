@@ -1042,7 +1042,7 @@ class BulkInvestigationFilterView(BasicFilterView):
     @property
     def queryset(self):
         select_r = ['type','subtype']
-        return SingletonObservable.objects.select_related(*select_r).filter(sources__import_info_id__in = self.importinfo_pks2info.keys()).distinct()
+        return SingletonObservable.objects.select_related(*select_r).filter(sources__import_info_id__in = self.checked_import_infos).distinct()
 
     counting_paginator = False
 
@@ -1059,7 +1059,9 @@ class BulkInvestigationFilterView(BasicFilterView):
         if session:
             self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
             self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
+            self.checked_import_infos = session['checked_import_infos']
         else:
+            self.checked_import_infos = []
             messages.error(request,"No import info objects selected.")
 
         return super(BulkInvestigationFilterView,self).get(request, *args, **kwargs)
@@ -1069,11 +1071,11 @@ class BulkInvestigationFilterView(BasicFilterView):
         self.importinfo_pks2info = {}
 
         if 'action_objects' in request.POST:
-            self.import_info_pks = [int(x) for x in request.POST.getlist('action_objects')]
+            self.checked_import_infos = [int(x) for x in request.POST.getlist('action_objects')]
             self.importinfo_pks2info.update(
-                {k : {} for k in self.import_info_pks}
+                {k : {} for k in self.checked_import_infos}
             )
-            singobs_pks = [x.pk for x in self.queryset]
+            singobs_pks = self.queryset.values_list('id',flat=True)
 
             select = ['id','name','actionable_thru__singleton_observables__id']
             importinfo_qs = ImportInfo.objects.filter(actionable_thru__singleton_observables__id__in=singobs_pks).prefetch_related("actionable_thru__singleton_observables").values(*select)
@@ -1088,7 +1090,8 @@ class BulkInvestigationFilterView(BasicFilterView):
             self.cache_session_key = "%s" % uuid4()
             self.request.session[self.cache_session_key] = {
                 'indicator2importinfo' : self.indicator2importinfo,
-                'importinfo_pks2info' : self.importinfo_pks2info
+                'importinfo_pks2info' : self.importinfo_pks2info,
+                'checked_import_infos' : self.checked_import_infos
             }
 
         elif 'investigation_tag' in request.POST:
@@ -1106,7 +1109,7 @@ class BulkInvestigationFilterView(BasicFilterView):
                 session = self.request.session.get(self.cache_session_key)
                 self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
                 self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
-
+                self.checked_import_infos = session['checked_import_infos']
 
                 if form_valid:
                     context_name = cleaned_data.get('investigation_tag')
