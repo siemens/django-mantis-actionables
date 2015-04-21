@@ -1046,15 +1046,15 @@ class BulkInvestigationFilterView(BasicFilterView):
 
     counting_paginator = False
 
-    session_key = "bulk_investigation"
-
     paginate_by = None
 
     def get(self, request, *args, **kwargs):
         self.indicator2importinfo = {}
         self.importinfo_pks2info = {}
 
-        session = self.request.session.get(self.session_key)
+        self.cache_session_key = request.GET.get('cache_session_key')
+        session = self.request.session.get(self.cache_session_key)
+
         #if GET is called directly without previous selction on import_info objects, empty list is displayed with error message
         if session:
             self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
@@ -1085,20 +1085,22 @@ class BulkInvestigationFilterView(BasicFilterView):
                         'name' : x['name']
                     }
 
-            self.request.session[self.session_key] = {
+            self.cache_session_key = "%s" % uuid4()
+            self.request.session[self.cache_session_key] = {
                 'indicator2importinfo' : self.indicator2importinfo,
                 'importinfo_pks2info' : self.importinfo_pks2info
             }
 
-        else:
-            session = self.request.session.get(self.session_key)
-            self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
-            self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
-
-        if 'investigation_tag' in request.POST:
+        elif 'investigation_tag' in request.POST:
             self.form = InvestigationForm(request.POST.dict())
             form_valid = self.form.is_valid()
             cleaned_data = self.form.cleaned_data
+
+            self.cache_session_key = cleaned_data.get('cache_session_key')
+            session = self.request.session.get(self.cache_session_key)
+            self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
+            self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
+
             self.indicator_pks = [int(x) for x in request.POST.get('pks','').split(",")]
             if form_valid:
                 context_name = cleaned_data.get('investigation_tag')

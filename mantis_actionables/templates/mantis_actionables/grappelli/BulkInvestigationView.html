@@ -90,12 +90,12 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 {% endblock %}
 
 {% block right_column %}
-    {% show_InvestigationAction %}
+    {% show_InvestigationAction view.cache_session_key %}
     <script>
      (function($)
      {
         $(document).ready(function() {
-             $("form#investigation").submit(function(event){
+             $("form#investigation").submit(function(event) {
                 var checked_inputs = $("tr input.action-select:checked");
                 var pks = "";
                 checked_inputs.each(function(index) {
@@ -111,7 +111,7 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
                 $('<input />').attr('type', 'hidden')
                         .attr('name', "pks")
                         .attr('value', pks)
-                        .appendTo('form#investigation');
+                        .appendTo(this);
                 return true;
             });
 
@@ -121,13 +121,17 @@ Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
                     console.log(this);
                     $(this).prop('checked', _new_state);
                 });
-            })
+            });
+
+            $("form#filter").submit(function(event) {
+                $("input#id_cache_session_key").appendTo(this);
+                return true;
+            });
 
         });
      })(grp.jQuery);
     </script>
     {{ block.super }}
-
 {% endblock %}
 
 
