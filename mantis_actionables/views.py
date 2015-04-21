@@ -1092,38 +1092,46 @@ class BulkInvestigationFilterView(BasicFilterView):
             }
 
         elif 'investigation_tag' in request.POST:
-            self.form = InvestigationForm(request.POST.dict())
-            form_valid = self.form.is_valid()
-            cleaned_data = self.form.cleaned_data
+            try:
+                self.indicator_pks = [int(x) for x in request.POST.get('pks','').split(",")]
+            except ValueError:
+                self.indicator_pks = []
 
-            self.cache_session_key = cleaned_data.get('cache_session_key')
-            session = self.request.session.get(self.cache_session_key)
-            self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
-            self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
+            if self.indicator_pks:
+                self.form = InvestigationForm(request.POST.dict())
+                form_valid = self.form.is_valid()
+                cleaned_data = self.form.cleaned_data
 
-            self.indicator_pks = [int(x) for x in request.POST.get('pks','').split(",")]
-            if form_valid:
-                context_name = cleaned_data.get('investigation_tag')
-                import_info_action = set()
-                for indicator_pk in self.indicator_pks:
-                    import_info_action.update(self.indicator2importinfo[indicator_pk])
+                self.cache_session_key = cleaned_data.get('cache_session_key')
+                session = self.request.session.get(self.cache_session_key)
+                self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
+                self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
 
-                actionable_tag_bulk_action.delay(action="add",
-                                                context_name_pairs=[(context_name,context_name)],
-                                                thing_to_tag_pks= self.indicator_pks,
-                                                user=request.user,
-                                                comment = "Investigation initiated on indicator via bulk investigation")
 
-                ActionableTag.bulk_action(action="add",
-                                         context_name_pairs=[(context_name,context_name)],
-                                         thing_to_tag_pks= import_info_action,
-                                         thing_to_tag_model= ImportInfo,
-                                         user=request.user,
-                                         comment = "Investigation initiated on indicator in this report via bulk investigation")
+                if form_valid:
+                    context_name = cleaned_data.get('investigation_tag')
+                    import_info_action = set()
+                    for indicator_pk in self.indicator_pks:
+                        import_info_action.update(self.indicator2importinfo[indicator_pk])
 
-                messages.success(request,"Investigation tag is being added to all indicators in this report.")
+                    actionable_tag_bulk_action.delay(action="add",
+                                                    context_name_pairs=[(context_name,context_name)],
+                                                    thing_to_tag_pks= self.indicator_pks,
+                                                    user=request.user,
+                                                    comment = "Investigation initiated on indicator via bulk investigation")
+
+                    ActionableTag.bulk_action(action="add",
+                                             context_name_pairs=[(context_name,context_name)],
+                                             thing_to_tag_pks= import_info_action,
+                                             thing_to_tag_model= ImportInfo,
+                                             user=request.user,
+                                             comment = "Investigation initiated on indicator in this report via bulk investigation")
+
+                    messages.success(request,"Investigation tag is being added to all indicators in this report.")
+                else:
+                    messages.error(request,"Please chose a valid investigation tag.")
             else:
-                messages.error(request,"Please chose a valid investigation tag.")
+                messages.error(request,"No Indicators were selected.")
 
         return super(BulkInvestigationFilterView,self).get(request, *args, **kwargs)
 
