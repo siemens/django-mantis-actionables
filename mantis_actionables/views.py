@@ -79,7 +79,7 @@ def safe_cast(val, to_type, default=None):
     except ValueError:
         return default
 
-def datatable_query(post, paginate_at, **kwargs):
+def datatable_query(post, **kwargs):
 
     post_dict = parser.parse(str(post.urlencode()))
 
@@ -182,9 +182,7 @@ def datatable_query(post, paginate_at, **kwargs):
     else:
         q_count_filtered = 100
     # Treat the paging/limit
-    length = safe_cast(post_dict.get('length'), int, paginate_at)
-    if length<-1:
-        length = paginate_at
+    length = safe_cast(post_dict.get('length'), int)
     start = safe_cast(post_dict.get('start'), int, 0)
     if start<0:
         start = 0
@@ -294,10 +292,6 @@ class BasicTableDataProvider(BasicJSONView):
         # POST has the following parameters
         # http://www.datatables.net/manual/server-side#Configuration
 
-        # We currently override the length to be fixed at 10
-        POST[u'length'] = "%s" % self.table_rows
-
-
         table_name = POST.get('table_type','').replace(' ','_')
 
 
@@ -311,7 +305,7 @@ class BasicTableDataProvider(BasicJSONView):
                 }
 
         logger.debug("About to start database query for user %s for table %s" % (self.request.user,table_name))
-        q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, paginate_at = self.table_rows, **kwargs)
+        q,res['recordsTotal'],res['recordsFiltered'] = datatable_query(POST, **kwargs)
         q = list(q)
         logger.debug("Finished database query for user %s for table %s; %s results" % (self.request.user,table_name,len(q)))
 
@@ -359,9 +353,6 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
 
-
-    # TODO only ten works at the moment -- there is some dependency on 10
-    # in the calculation of the pagination
     table_rows = 10
 
     @classmethod
@@ -667,6 +658,7 @@ class BasicDatatableView(BasicTemplateView):
         context['data_view_name'] = self.data_provider_class.qualified_view_name
         context['title'] = self.title
         context['initial_filter'] = self.initial_filter
+        context['table_rows'] = self.data_provider_class.table_rows
         context['tables'] = []
 
         context['datatables_dom'] = self.datatables_dom

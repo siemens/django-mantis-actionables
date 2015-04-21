@@ -31,6 +31,7 @@
              })*/
 
             tables[tbl_key] = $(this).DataTable({
+                "pageLength" : pagination_length,
                 "autoWidth": true,
                 "columnDefs" : colDef,
                 "searching": true,

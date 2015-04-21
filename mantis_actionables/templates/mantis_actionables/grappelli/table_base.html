@@ -3,9 +3,10 @@
 {% block javascripts %}
     {{ block.super }}
     <script>
-      var view_url = '{% url data_view_name %}'
-      var initial_filter = '{{ initial_filter }}'
-      var datatables_dom = '{{ datatables_dom }}'
+      var view_url = '{% url data_view_name %}';
+      var initial_filter = '{{ initial_filter }}';
+      var datatables_dom = '{{ datatables_dom }}';
+      var pagination_length = {{ table_rows }};
     </script>
 {% endblock javascripts %}
 
