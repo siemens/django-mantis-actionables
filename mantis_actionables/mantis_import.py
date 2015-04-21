@@ -149,6 +149,10 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
 
 def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_singleton_pks,user=None,comment=''):
 
+    if not user:
+        logger.critical("No user provided when trying to transfer tags %s from actionables to dingos" % context_name_set)
+        return
+
     affected_singletons = SingletonObservable.objects.filter(id__in=affected_singleton_pks)
 
     affected_fact_ids = set(SingletonObservable.objects.filter(id__in=affected_singleton_pks).values_list('sources__iobject_fact',flat=True))
@@ -186,7 +190,7 @@ def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_
 
 
 
-def update_and_transfer_tags(fact_pks,user=None,tags_to_add=None):
+def update_and_transfer_tags(fact_pks,user=None):
 
     """
     Given a list or set of fact primary keys, the function does the following:
@@ -227,7 +231,7 @@ def update_and_transfer_tags(fact_pks,user=None,tags_to_add=None):
     # which will then be associated with all status changes
     # due to this particular run of the function.
 
-    print tags_to_add
+
     action = None
 
     # Extract all tags associated with the facts and populate
@@ -241,10 +245,6 @@ def update_and_transfer_tags(fact_pks,user=None,tags_to_add=None):
     for fact_tag_info in tag_fact_q:
         tag_list = fact2tag_map.setdefault(fact_tag_info['id'],[])
         tag_list.append(fact_tag_info['tag_through__tag__name'])
-
-        if tags_to_add:
-            for tag_to_add in tags_to_add:
-                tag_list.append(tag_to_add)
 
 
     logger.debug("Calculated fact2tag_map as %s" % fact2tag_map)
@@ -330,7 +330,7 @@ def update_and_transfer_tags(fact_pks,user=None,tags_to_add=None):
                                               thing_to_tag_pks=[singleton.pk],
                                               user=result_user,
                                               comment=comment,
-                                              supress_transfer_to_dingos= (not tags_to_add))
+                                              supress_transfer_to_dingos= True)
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found special tag %s" % tag)
@@ -349,7 +349,8 @@ def update_and_transfer_tags(fact_pks,user=None,tags_to_add=None):
 
 def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None,
                                                     action_comment="Actionables Import",
-                                                    tags_to_add=None):
+                                                    tags_to_add = None,
+                                                    tagging_comment = ""):
     """
     The function carries out the following actions:
 
@@ -376,6 +377,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
     # is lower
 
     #skip_terms = [{'term':'Related','operator':'icontains'}]
+
 
     skip_terms = []
 
@@ -429,12 +431,27 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
 
                 results += part_results
 
+        # If tags_to_add is set, the user wants us to add dingos tags to the facts before proceeding
+
+        fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
+
+        print "Found facts %s" % fact_pks
+        facts_to_tag = Fact.objects.filter(pk__in=fact_pks)
+        for fact in facts_to_tag:
+            print "Adding tags %s" % tags_to_add
+            fact.tags.add(*tags_to_add)
+        TaggingHistory.bulk_create_tagging_history('add',
+                                                   tags_to_add,
+                                                   facts_to_tag,
+                                                   user,
+                                                   tagging_comment)
+
         import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
                                                         top_level_iobj_pk,
                                                         results,action=action,
                                                         user=user,
-                                                        graph=graph,
-                                                        tags_to_add = tags_to_add)
+                                                        graph=graph)
+
 
 
 
@@ -442,7 +459,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
                                                     action=None,
                                                     user=None,
                                                     graph=None,
-                                                    tags_to_add = None):
+                                                    ):
     """
     The function takes the primary key of an InfoObject representing a top-level STIX object
     and a list of results that have the following shape::
@@ -648,8 +665,8 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
                                  related_entities = entities,
                                  graph=graph)
 
-    fact_pks = set(map(lambda x: x.get('fact.pk'), results))
-    update_and_transfer_tags(fact_pks,user=user,tags_to_add=tags_to_add)
+    fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
+    update_and_transfer_tags(fact_pks,user=user)
 
 
 def process_STIX_Reports(imported_since, imported_until=None):
