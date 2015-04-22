@@ -59,6 +59,18 @@ class ImportInfoFilter(django_filters.FilterSet):
         fields = ['name','namespace__uri','timestamp','create_timestamp']
 
 
+class BulkInvestigationFilter(django_filters.FilterSet):
+
+    type__name = django_filters.CharFilter(lookup_type='icontains',
+                                           label='Type contains')
+    subtype__name = django_filters.CharFilter(lookup_type='icontains',
+                                              label='Subtype')
+
+    class Meta:
+        order = ['type__name','subtype__name','value']
+        order_by = create_order_keyword_list(order)
+        model = SingletonObservable
+        fields = ['type__name','subtype__name','value']
 
 
 class SingletonObservablesFilter(django_filters.FilterSet):

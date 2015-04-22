@@ -18,6 +18,8 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import json
+from uuid import uuid4
 
 import datetime
 from querystring_parser import parser
@@ -47,7 +49,7 @@ from dingos.templatetags.dingos_tags import show_TagDisplay
 
 
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
-from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter
+from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter
 
 from .forms import ContextEditForm
 
@@ -884,10 +886,6 @@ class ActionablesContextView(BasicFilterView):
             return sorted(self.object2tag_map.get((type,object.pk),[]))
 
 
-
-
-
-
     @property
     def queryset(self):
         tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
@@ -903,8 +901,6 @@ class ActionablesContextView(BasicFilterView):
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
             prefetch_related('sources__import_info','sources__import_info__namespace')
-
-
 
 
     def get_context_data(self, **kwargs):
@@ -1009,7 +1005,14 @@ class ImportInfoList(BasicFilterView):
 
     counting_paginator = True
 
+
+    paginate_by = 50
+
     object2tag_map = {}
+
+    list_actions = [
+        ('Investigate', 'actionables_action_investigate', 0)
+    ]
 
 
     def object2tags(self,object):
@@ -1025,6 +1028,117 @@ class ImportInfoList(BasicFilterView):
 
         if object:
             return sorted(self.object2tag_map.get(object.pk,[]))
+
+
+class BulkInvestigationFilterView(BasicFilterView):
+    template_name = 'mantis_actionables/%s/BulkInvestigationView.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = "Bulk Investigation"
+
+    filterset_class = BulkInvestigationFilter
+
+    allow_save_search = False
+
+    @property
+    def queryset(self):
+        select_r = ['type','subtype']
+        return SingletonObservable.objects.select_related(*select_r).filter(sources__import_info_id__in = self.checked_import_infos).distinct()
+
+    counting_paginator = False
+
+    paginate_by = None
+
+    checked_import_infos = []
+
+    def get(self, request, *args, **kwargs):
+        self.indicator2importinfo = {}
+        self.importinfo_pks2info = {}
+
+        self.cache_session_key = request.GET.get('cache_session_key')
+        session = self.request.session.get(self.cache_session_key)
+
+        #if GET is called directly without previous selction on import_info objects, empty list is displayed with error message
+        if session:
+            self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
+            self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
+            self.checked_import_infos = session['checked_import_infos']
+        else:
+            self.checked_import_infos = []
+            messages.error(request,"No import info objects selected.")
+
+        return super(BulkInvestigationFilterView,self).get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        self.indicator2importinfo = {}
+        self.importinfo_pks2info = {}
+
+        if 'action_objects' in request.POST:
+            self.checked_import_infos = [int(x) for x in request.POST.getlist('action_objects')]
+            self.importinfo_pks2info.update(
+                {k : {} for k in self.checked_import_infos}
+            )
+            singobs_pks = self.queryset.values_list('id',flat=True)
+
+            select = ['id','name','actionable_thru__singleton_observables__id']
+            importinfo_qs = ImportInfo.objects.filter(actionable_thru__singleton_observables__id__in=singobs_pks).prefetch_related("actionable_thru__singleton_observables").values(*select)
+            for x in importinfo_qs:
+                current_mapping = self.indicator2importinfo.setdefault(x['actionable_thru__singleton_observables__id'],[])
+                current_mapping.append(x['id'])
+                if x['id'] not in self.importinfo_pks2info or not self.importinfo_pks2info[x['id']]:
+                    self.importinfo_pks2info[x['id']] = {
+                        'name' : x['name']
+                    }
+
+            self.cache_session_key = "%s" % uuid4()
+            self.request.session[self.cache_session_key] = {
+                'indicator2importinfo' : self.indicator2importinfo,
+                'importinfo_pks2info' : self.importinfo_pks2info,
+                'checked_import_infos' : self.checked_import_infos
+            }
+
+        elif 'investigation_tag' in request.POST:
+            try:
+                self.indicator_pks = [int(x) for x in request.POST.get('pks','').split(",")]
+            except ValueError:
+                self.indicator_pks = []
+
+            self.form = InvestigationForm(request.POST.dict())
+            form_valid = self.form.is_valid()
+            cleaned_data = self.form.cleaned_data
+            self.cache_session_key = cleaned_data.get('cache_session_key')
+            session = self.request.session.get(self.cache_session_key)
+            self.indicator2importinfo.update({int(k) : v for k,v in session['indicator2importinfo'].items()})
+            self.importinfo_pks2info.update({int(k) : v for k,v in session['importinfo_pks2info'].items()})
+            self.checked_import_infos = session['checked_import_infos']
+
+            if self.indicator_pks:
+
+                if form_valid:
+                    context_name = cleaned_data.get('investigation_tag')
+                    import_info_action = set()
+                    for indicator_pk in self.indicator_pks:
+                        import_info_action.update(self.indicator2importinfo[indicator_pk])
+
+                    actionable_tag_bulk_action.delay(action="add",
+                                                    context_name_pairs=[(context_name,context_name)],
+                                                    thing_to_tag_pks= self.indicator_pks,
+                                                    user=request.user,
+                                                    comment = "Investigation initiated on indicator via bulk investigation")
+
+                    ActionableTag.bulk_action(action="add",
+                                             context_name_pairs=[(context_name,context_name)],
+                                             thing_to_tag_pks= import_info_action,
+                                             thing_to_tag_model= ImportInfo,
+                                             user=request.user,
+                                             comment = "Investigation initiated on indicator in this report via bulk investigation")
+
+                    messages.success(request,"Investigation tag is being added to selected indicators.")
+                else:
+                    messages.error(request,"Please chose a valid investigation tag.")
+            else:
+                messages.error(request,"No Indicators were selected.")
+
+        return super(BulkInvestigationFilterView,self).get(request, *args, **kwargs)
 
 
 class SingletonObservableDetailView(BasicDetailView):
@@ -1088,7 +1202,6 @@ class SingletonObservableDetailView(BasicDetailView):
                                                     actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
         logger.debug("Done")
         return self.stati_list
-
 
 
 class ImportInfoDetailsView(BasicFilterView):
@@ -1236,6 +1349,4 @@ class ActionablesContextEditView(BasicDetailView):
 
     def get_object(self):
         return Context.objects.get(name=self.kwargs['context_name'])
-
-
 
