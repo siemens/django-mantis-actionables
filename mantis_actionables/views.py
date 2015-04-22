@@ -869,12 +869,15 @@ class ActionablesContextView(BasicFilterView):
             tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk','actionable_tags__actionable_tag__context__name',
                                                      'actionable_tags__actionable_tag__tag__name')
 
+            # Prune results without tags (they are of form ``(pk,None,None)``)
+
+            tag_infos = [x for x in tag_infos if x[1] and x[2]]
+
             for pk,context_name,tag_name in tag_infos:
                 if context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',('ImportInfo',pk))
 
-
-
+            print self.object2tag_map
 
         if object:
 
