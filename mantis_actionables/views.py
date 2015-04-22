@@ -886,10 +886,6 @@ class ActionablesContextView(BasicFilterView):
             return sorted(self.object2tag_map.get((type,object.pk),[]))
 
 
-
-
-
-
     @property
     def queryset(self):
         tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
@@ -905,8 +901,6 @@ class ActionablesContextView(BasicFilterView):
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
             prefetch_related('sources__import_info','sources__import_info__namespace')
-
-
 
 
     def get_context_data(self, **kwargs):
@@ -1010,6 +1004,9 @@ class ImportInfoList(BasicFilterView):
     allow_save_search = False
 
     counting_paginator = True
+
+
+    paginate_by = 50
 
     object2tag_map = {}
 
