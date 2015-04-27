@@ -29,19 +29,53 @@ from django.db.models import Q
 
 from django_filters import Filter
 
+from django.utils import six
+
+from django_filters.fields import Lookup
+
+
 class MultiFilter(Filter):
 
+    #
+    # Code below taken from https://github.com/alex/django-filter
+    # Copyright and license:
+    # (c) Alex Gaynor and individual contributors.
+    # All rights reserved.
+    #
+    # Redistribution and use in source and binary forms, with or without
+    # modification, are permitted provided that the following conditions are met:
+    #
+    #  * Redistributions of source code must retain the above copyright notice, this
+    #    list of conditions and the following disclaimer.
+    #  * Redistributions in binary form must reproduce the above copyright notice,
+    #    this list of conditions and the following disclaimer in the documentation
+    #    and/or other materials provided with the distribution.
+    #  * The names of its contributors may not be used to endorse or promote products
+    #    derived from this software without specific prior written permission.
+    #
+    # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+    # ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+    # ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    # (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    # LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+    # ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
     def filter(self, qs, value):
-        # Code taken from https://github.com/alex/django-filter/blob/develop/django_filters/filters.py
-        if isinstance(value, (list, tuple)):
-            lookup = six.text_type(value[1])
-            if not lookup:
-                lookup = 'exact'  # fallback to exact if lookup is not provided
-            value = value[0]
+
+        if isinstance(value, Lookup):
+            lookup = six.text_type(value.lookup_type)
+            value = value.value
         else:
             lookup = self.lookup_type
         if value in ([], (), {}, None, ''):
             return qs
+        method = qs.exclude if self.exclude else qs.filter
+        # Start modification
         if '__OR__' in self.name:
             # Below is our modification that allows to query two different columns at the same time
             # joined by an OR
@@ -49,9 +83,10 @@ class MultiFilter(Filter):
             q_obj = Q(**{'%s__%s' % (names[0], lookup): value})
             for name in names[1:]:
                 q_obj = q_obj | Q(**{'%s__%s' % (name, lookup): value})
-            qs =qs.filter(q_obj)
+            qs = method(q_obj)
         else:
-            qs = qs.filter(**{'%s__%s' % (self.name, lookup): value})
+            qs = method(**{'%s__%s' % (self.name, lookup): value})
+
         if self.distinct:
             qs = qs.distinct()
         return qs
@@ -124,7 +159,6 @@ class SingletonObservablesFilter(django_filters.FilterSet):
         fields = ['type__name','subtype__name','value']
 
 
-
 class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
 
     type__name = django_filters.CharFilter(lookup_type='icontains',
@@ -140,12 +174,7 @@ class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
     sources__top_level_iobject_identifier__latest__name = django_filters.CharFilter(label='',widget=widgets.HiddenInput())
 
     test = forms.CharField(required=False,label="Test")
-    #sources__top_level_iobject_identifier__latest__name = django_filters.CharFilter(lookup_type='icontains',
-    #                                                       label='Report name contains',
-    #                                                       widget=widgets.HiddenInput(),
-    #                                                       )
-
-
+    
     class Meta:
         order_by = create_order_keyword_list(['type__name','subtype__name','value'])
         model = SingletonObservable
