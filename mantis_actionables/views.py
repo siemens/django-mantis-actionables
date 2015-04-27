@@ -49,7 +49,7 @@ from dingos.templatetags.dingos_tags import show_TagDisplay
 
 
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
-from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter
+from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter, ExtendedSingletonObservablesFilter
 
 from .forms import ContextEditForm
 
@@ -823,7 +823,7 @@ class ActionablesContextView(BasicFilterView):
     template_name = 'mantis_actionables/%s/ContextView.html' % DINGOS_TEMPLATE_FAMILY
 
 
-    filterset_class= SingletonObservablesFilter
+    filterset_class= ExtendedSingletonObservablesFilter
 
     allow_save_search = False
 
