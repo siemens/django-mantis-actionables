@@ -63,21 +63,25 @@ CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonO
 #init column_dict
 COLS = {}
 
+
 def my_escape(value):
     if not value:
         return value
     else:
         return(escape(value))
 
+
 def fillColDict(colsDict,cols):
     for index,col in zip(range(len(cols)),cols):
         colsDict[index] = col
+
 
 def safe_cast(val, to_type, default=None):
     try:
         return to_type(val)
     except ValueError:
         return default
+
 
 def datatable_query(post, **kwargs):
 
@@ -101,9 +105,6 @@ def datatable_query(post, **kwargs):
     for filter in base_filters:
         q = q.filter(**filter)
 
-    q = q.values_list(*(cols.values()))
-    #sources__id for join on sources table
-
     if count:
         q_count_all = q.count()
     else:
@@ -117,11 +118,11 @@ def datatable_query(post, **kwargs):
             continue
         srch = srch.get('value', False)
 
-        if not srch or srch.lower()=='all':
+        if not srch or (type(srch) == type(basestring) and srch.lower()=='all'):
             continue
         # srch should have a value
         col_filters.append({
-            cols[colk] + '__exact' : srch
+            display_cols[colk] + '__icontains' : srch
         })
 
     if col_filters:
@@ -191,6 +192,9 @@ def datatable_query(post, **kwargs):
         params.append(length)
         params.append(start)
 
+    #sources__id for join on sources table
+    q = q.values_list(*(cols.values()))
+
     #return (q,-1,-1)
     return (q, q_count_all,q_count_filtered)
 
@@ -205,6 +209,9 @@ class BasicTableDataProvider(BasicJSONView):
     table_spec_map = {}
 
     table_rows = 10
+
+    #column ids (starting with 0 = first column) where a column based filter should be displayed
+    column_filter = []
 
     @classmethod
     def get_cols_dict(cls,table_name):
@@ -313,8 +320,10 @@ class BasicTableDataProvider(BasicJSONView):
         logger.debug("Finished postprocessing for user %s for table %s" % (self.request.user,table_name))
         return res
 
+
 def table_name_slug(table_name):
     return table_name.lower().replace(' ','_')
+
 
 class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider):
 
@@ -346,14 +355,16 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                              ('sources__import_info_id','Report Import Info PK','0'), #5,
                              ('id','Singleton Observable PK','0') #6
                             ],
-        'DISPLAY_ONLY' :  [('','Report Source','0'),
-                             ('','Report Name','0'),
+        'DISPLAY_ONLY' :  [('sources__import_info__namespace__uri','Report Source','0'),
+                             ('sources__import_info__name','Report Name','0'),
                              ]
     }
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
 
     table_rows = 10
+
+    column_filter = [2,3,4,5,7,8]
 
     @classmethod
     def ALL_IMPORTS_POSTPROCESSOR(cls,table_spec,res,q):
@@ -436,8 +447,6 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
     }
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
-
-
 
 
 class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
@@ -616,6 +625,8 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
 
     table_spec= {table_name_slug(TABLE_NAME_ALL_STATI):ALL_STATI_TABLE_SPEC}
 
+    column_filter = [6,7,8,9]
+
     def postprocess(self,table_name,res,q):
         table_spec = self.table_spec[table_name]
         offset = table_spec['offset']
@@ -659,6 +670,7 @@ class BasicDatatableView(BasicTemplateView):
         context['title'] = self.title
         context['initial_filter'] = self.initial_filter
         context['table_rows'] = self.data_provider_class.table_rows
+        context['column_filter'] = self.data_provider_class.column_filter
         context['tables'] = []
 
         context['datatables_dom'] = self.datatables_dom
@@ -671,8 +683,6 @@ class BasicDatatableView(BasicTemplateView):
             context['tables'].append((table_name,display_columns))
 
         return context
-
-
 
 
 class SourceInfoView(BasicDatatableView):
@@ -692,7 +702,6 @@ class StatusInfoView(BasicDatatableView):
     data_provider_class = SingletonObservablesWithStatusOneTableDataProvider
 
     template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
-
 
     title = 'Indicator Status Info'
 
@@ -721,7 +730,6 @@ class UnifiedSearch(BasicDatatableView):
                   data_provider_class.TABLE_NAME_DINGOS_VALUES,
                   data_provider_class.TABLE_NAME_INFOBJECT_IDENTIFIER_UID,
                   data_provider_class.TABLE_NAME_IMPORT_INFO_NAME]
-
 
 
 def processActionablesTagging(data,**kwargs):
@@ -919,6 +927,7 @@ class ActionablesContextView(BasicFilterView):
 
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
 
+
 class ActionablesTagHistoryView(BasicTemplateView):
     template_name = 'mantis_actionables/%s/ActionTagHistoryList.html' % DINGOS_TEMPLATE_FAMILY
 
@@ -976,6 +985,7 @@ class ActionablesTagHistoryView(BasicTemplateView):
 
         return super(ActionablesTagHistoryView,self).get(request, *args, **kwargs)
 
+
 class ActionablesContextList(BasicFilterView):
     template_name = 'mantis_actionables/%s/ContextList.html' % DINGOS_TEMPLATE_FAMILY
 
@@ -986,6 +996,7 @@ class ActionablesContextList(BasicFilterView):
     allow_save_search = False
 
     counting_paginator = True
+
 
 class ImportInfoList(BasicFilterView):
     template_name = 'mantis_actionables/%s/ImportInfoList.html' % DINGOS_TEMPLATE_FAMILY
@@ -1077,7 +1088,6 @@ class SingletonObservableDetailView(BasicDetailView):
                                                     actionable_thru__content_typeid=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-actionable_thru__timestamp")
         logger.debug("Done")
         return self.stati_list
-
 
 
 class ImportInfoDetailsView(BasicFilterView):

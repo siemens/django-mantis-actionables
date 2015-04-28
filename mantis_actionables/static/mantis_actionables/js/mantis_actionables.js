@@ -139,5 +139,15 @@
             }
         });
 
+        // Initilize the column filters
+        $.each(tables, function(table_id, table) {
+            table.columns().every(function() {
+                var that = this;
+                $('input',this.footer()).on('keyup change', function() {
+                    that.search(this.value)
+                        .draw();
+                });
+            });
+        });
     });
 }(django.jQuery));
