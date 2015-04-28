@@ -9,6 +9,7 @@
     var view_url = '{% url data_view_name %}';
     var initial_filter = '{{ initial_filter }}';
     var datatables_dom = '{{ datatables_dom }}';
+    //set pagination_length here in order to transfer it to datatable init
     var pagination_length = {{ table_rows }};
   </script>
 {% endblock javascripts %}
@@ -35,6 +36,7 @@
                     </thead>
                     <tfoot>
                     <tr>
+                    {# add filters to the columns which are enabled via column_filter list provided in BasicTableDataProvider #}
                       {% for i in cols.values|length|range %}
                         <td>{% if i in column_filter %}<input type="text" placeholder="Column Search"/>{% endif %}</td>
                       {% endfor %}

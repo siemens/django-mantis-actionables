@@ -193,6 +193,7 @@ def datatable_query(post, **kwargs):
         params.append(start)
 
     #sources__id for join on sources table
+    #values_list() has to be called here, otherwise the query isn't correct
     q = q.values_list(*(cols.values()))
 
     #return (q,-1,-1)
@@ -208,6 +209,7 @@ class BasicTableDataProvider(BasicJSONView):
 
     table_spec_map = {}
 
+    #pagination length
     table_rows = 10
 
     #column ids (starting with 0 = first column) where a column based filter should be displayed
