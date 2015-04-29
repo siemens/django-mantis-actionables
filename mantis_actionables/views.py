@@ -832,6 +832,8 @@ class ActionablesContextView(BasicFilterView):
 
     show_checkboxes = True
 
+    paginate_by = 100
+
     @property
     def title(self):
         return self.curr_context_name
