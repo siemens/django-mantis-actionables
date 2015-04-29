@@ -532,8 +532,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
-            ('', 'Investigation View', '0'), #1
-            ('', 'TLP', '0'), #2
+            ('', 'TLP', '0'), #1
         ]
     }
 
@@ -558,8 +557,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
-            ('', 'Investigation View', '0'), #1
-            ('', 'TLP', '0'), #2
+            ('', 'TLP', '0'), #1
         ]
     }
 
@@ -653,13 +651,15 @@ class DashboardDataProvider(BasicTableDataProvider):
             id2colors = self.get_id_tlp_mapping(offset+0, q)
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
-                row[1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[1])
+                # the report name links to the investigation/incident context page, the symbol to the infoobject
+                row[1] = "<a href='%s'>%s</a> <a href='%s'><img src='/static/admin/img/selector-search.gif' alt='Lookup' height='16' width='16' /><a/>" % (
+                    reverse('actionables_context_view',kwargs={'context_name':_row[1]}),
+                    _row[1],
+                    reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}),
+                    )
                 # get the creation timestamp of this identifier and limit results to 1 result
                 row[offset+0] = InfoObject.objects.filter(identifier__id=int(_row[offset+2])).order_by('timestamp').values_list('timestamp')[0]
-
-                if not ' ' in _row[1]:
-                    row[offset+1] = "<a href='%s'>%s</a>" % (reverse('actionables_context_view',kwargs={'context_name':_row[1]}), _row[1]),
-                row[offset+2] = id2colors.get(int(_row[offset+0]), 0)
+                row[offset+1] = id2colors.get(int(_row[offset+0]), 0)
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS) or table_name == table_name_slug(self.TABLE_NAME_CURRENT_THREAT_ACTORS):
 
