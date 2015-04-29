@@ -721,15 +721,18 @@ class ActionableTag(models.Model):
         for pk in thing_to_tag_pks:
             logger.debug("Treating thing to tag with pk %s" % pk)
 
+            affected_tags = set([])
             for actionable_tag in actionable_tag_list:
-                affected_tags = set([])
+
                 if action_flag == ActionableTaggingHistory.ADD:
 
                     actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
                                                                                       object_id=pk,
                                                                                       content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                     if created:
+
                         affected_tags.add(actionable_tag)
+
 
                     logger.debug("Actionable_tag_2x %s, created: %s" % (actionable_tag_2x.pk,created))
 
@@ -752,6 +755,7 @@ class ActionableTag(models.Model):
                         actionable_tag_2xs.delete()
 
             logger.debug("Updating history")
+
             ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
                                                                  affected_tags,
                                                                  [pk],

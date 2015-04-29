@@ -28,7 +28,9 @@ from django.core.validators import RegexValidator
 
 from taggit.models import Tag
 
-from dingos import DINGOS_TAGGING_REGEX
+from dingos import DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
+
+from dingos.forms import ResultActionForm
 
 class TagForm(autocomplete_light.ModelForm):
     tag = autocomplete_light.ChoiceField(widget = autocomplete_light.TextWidget('TagNameAutocompleteActionables'))
@@ -88,3 +90,53 @@ class ContextEditForm(forms.Form):
         return cleaned_data
 
 
+class BulkTaggingForm(ResultActionForm):
+
+    def __init__(self,*args,**kwargs):
+
+        fixed_context = kwargs.pop('fixed_context',None)
+
+        self.action = kwargs.pop('action','').lower()
+
+
+        super(BulkTaggingForm, self).__init__(*args, **kwargs)
+
+        if fixed_context:
+
+            self.fields['context'] = forms.CharField(initial=fixed_context,
+                                                     widget=forms.TextInput(attrs={'readonly':'True'}))
+        else:
+            self.fields['context'] = forms.CharField()
+
+        self.fields['tags'] = forms.CharField(required= fixed_context,
+                                              help_text= """Enter multiple tags separated by commas.
+                                              In order to remove the context (and all associated tags),
+                                              enter the context itself and press "Remove". """)
+
+
+    reason = forms.CharField(widget=forms.Textarea(),
+                             required=False,
+                             help_text="Enter rationale (optional for adding tags, required for deleting).")
+
+    def clean(self):
+        cleaned_data = super(BulkTaggingForm, self).clean()
+
+        tags = map(lambda x: x.strip(), cleaned_data['tags'].split(','))
+
+        if self.action and self.action == 'add':
+            for tag in tags:
+                is_context_tag = False
+                for regex in DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX:
+                    if regex.match(tag):
+                        is_context_tag = True
+                        break
+                if is_context_tag:
+                    self.add_error('tags', forms.ValidationError("You cannot add a context tag within a context!"))
+
+
+
+        if self.action and self.action == 'remove':
+            if cleaned_data.get('reason','').strip() == '':
+                self.add_error('reason', forms.ValidationError("Please enter a reason for removing the tags."))
+
+        return cleaned_data

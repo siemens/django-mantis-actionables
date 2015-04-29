@@ -1,4 +1,4 @@
-{% extends "mantis_actionables/grappelli/base_lists_two_column.html" %}
+{% extends "dingos/grappelli/lists/base_lists_two_column.html" %}
 {% load actionables_tags %}
 {% load dingos_tags %}
 
@@ -9,9 +9,60 @@
 
       {% show_ContextMetaData context_obj=view.curr_context_object widget_config=ContextMetaDataWidgetConfig %}
 
+      <form id="bulk_tagging" action="" method="POST">
+
+    	  <div class ="grp-module grp-collapse">
+
+	  <h2 class="grp-collapse-handler"> Bulk Tagging</h2>
+           {% if view.form %}
+                <div class="grp-row">
+                {{ view.form.non_field_errors }}
+                    {% csrf_token %}
+                    {{ view.form.cache_session_key }}
+                    {{ view.form.result_len }}
+                        <table>
+                            <tbody>
+
+                                     <tr class="grp-row grp-row-odd">
+                                        <th>Context:</th>
+                                        <td>{{ view.form.context.errors }} {{ view.form.context }}</td>
+
+                                    </tr>
+
+                                    <tr class="grp-row grp-row-odd">
+                                        <th>Tags:</th>
+                                        <td>{{ view.form.tags.errors }} {{ view.form.tags }} <br/> <p class='grp-help'>{{ view.form.tags.help_text }}</p></td>
+
+                                    </tr>
+                                                                <tr class="grp-row grp-row-odd">
+                                        <th>Reason:</th>
+                                                                    <td>{{ view.form.reason.errors }} {{ view.form.reason }} <br/>
+                                                                        <p class='grp-help'>{{ view.form.reason.help_text }}</p></td>
+
+                                    </tr>
+                            </tbody>
+
+                        </table>
+                    <input name="action" value="Add" type="submit" />
+                    <input name="action" value="Remove" type="submit" />
+
+
+
+
+
+
+
+
+                </div>
+            {% endif %}
+
+	</div>
+
 
     <div class="grp-module grp-collapse grp-open">
       <h2 class="grp-collapse-handler">Singleton Observables tagged with "{{ view.curr_context_name }}"</h2>
+
+
 
       <div class="grp-module grp-changelist-results">
 
@@ -24,6 +75,7 @@
 
         <thead>
          <tr>
+              {% include "dingos/grappelli/includes/CheckboxActionHeaderColumn.html" %}
            <th scope="col"  class="sortable column-identifier">
                {% render_table_ordering "type__name" "Type" %}
 
@@ -40,11 +92,15 @@
          </tr>
          </thead>
         <tbody>
+
          {% for object in object_list %}
 
 
          <tr class="grp-row grp-row-{% cycle 'odd' 'even' as odd_even %}">
-           <td class="w-1 nowrap middle">{{ object.type.name }}</td>
+           <td>
+          {% checkbox_by_label view.form.checked_items object.pk %}
+           </td>
+             <td class="w-1 nowrap middle">{{ object.type.name }}</td>
            <td class="w-1 nowrap middle">{{ object.subtype.name }}</td>
            <td class="w-1 nowrap middle">{{ object.value }}</td>
            <td class="middle">
@@ -61,6 +117,7 @@
          {% for source in object.sources.all %}
            <tr class="grp-row grp-row-{{ odd_even }}">
             <td></td>
+                       <td></td>
             <td colspan="3" class="w-1 nowrap middle">
 	      {% if source.top_level_iobject_identifier %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
@@ -121,6 +178,7 @@
     </div>
    </div>
 
+      </form>
     {% show_TaggedThings tag=view.curr_context_name  %}
 
 
@@ -129,4 +187,5 @@
 
 {% include 'autocomplete_light/static.html' %}
 {% include "dingos/grappelli/includes/_TaggingDialogs.html" %}
+
 {% endblock %}

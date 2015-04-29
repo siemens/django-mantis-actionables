@@ -167,6 +167,7 @@ class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
                                               label='Subtype')
     value = django_filters.CharFilter(lookup_type='icontains',
                                               label='Value contains')
+
     sources__import_info__name__OR__sources__top_level_iobject_identifier__latest__name = CharMultiFilter(lookup_type='icontains',
                                                            label='Report name contains')
 
@@ -178,7 +179,12 @@ class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
     class Meta:
         order_by = create_order_keyword_list(['type__name','subtype__name','value'])
         model = SingletonObservable
-        fields = ['type__name','subtype__name','value','sources__import_info__name','sources__top_level_iobject_identifier__latest__name']
+        fields = ['type__name',
+                  'subtype__name',
+                  'value',
+                  'sources__import_info__name',
+                  'sources__top_level_iobject_identifier__latest__name',
+                  ]
 
 
     #def clean(self):

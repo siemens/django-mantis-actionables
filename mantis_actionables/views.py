@@ -51,7 +51,7 @@ from dingos.templatetags.dingos_tags import show_TagDisplay
 from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter, ExtendedSingletonObservablesFilter
 
-from .forms import ContextEditForm
+from .forms import ContextEditForm, BulkTaggingForm
 
 from dingos.models import vIO2FValue, Identifier
 
@@ -829,6 +829,9 @@ class ActionablesContextView(BasicFilterView):
 
     counting_paginator = True
 
+
+    show_checkboxes = True
+
     @property
     def title(self):
         return self.curr_context_name
@@ -841,6 +844,7 @@ class ActionablesContextView(BasicFilterView):
     object2tag_map = {}
 
 
+    form = None
 
     def object2tags(self,object,type='SingletonObservable'):
 
@@ -916,7 +920,9 @@ class ActionablesContextView(BasicFilterView):
         context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_history']}
         return context
 
+
     def get(self,request, *args, **kwargs):
+
         self.order_by = self.order_by_dict.get(request.GET.get('o'))
         self.curr_context_name = kwargs.get('context_name')
         try:
@@ -924,9 +930,55 @@ class ActionablesContextView(BasicFilterView):
         except ObjectDoesNotExist:
             self.curr_context_object = None
 
+        if not self.form:
+            self.form = BulkTaggingForm(fixed_context = self.curr_context_name,
+                                        result_pks= map(lambda x: x.pk, self.queryset))
+
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
 
+    def post(self,request,*args,**kwargs):
+
+        self.order_by = self.order_by_dict.get(request.GET.get('o'))
+        self.curr_context_name = kwargs.get('context_name')
+        try:
+            self.curr_context_object = Context.cached_objects.get(name=self.curr_context_name)
+        except ObjectDoesNotExist:
+            self.curr_context_object = None
+
+        action = request.POST.dict().get('action',None).lower()
+
+        self.form = BulkTaggingForm(request.POST,
+                                    fixed_context = self.curr_context_name,
+                                    action = request.POST.dict().get('action',None),
+                                    result_pks= map(lambda x: x.pk, self.queryset))
+
+        form_valid = self.form.is_valid()
+        cleaned_data = self.form.cleaned_data
+        if not cleaned_data['reason']:
+            reason = 'Bulk tagging carried out in context of %s' % self.curr_context_name
+        else:
+            reason = cleaned_data['reason']
+
+        if form_valid:
+
+
+            tags = map(lambda x: x.strip(), cleaned_data['tags'].split(','))
+            context_name_pairs = map(lambda x : (cleaned_data['context'],x), tags)
+            things_to_tag = map(lambda x: int(x), cleaned_data['checked_items'])
+
+
+            ActionableTag.bulk_action(action = action,
+                                          context_name_pairs=context_name_pairs,
+                                          thing_to_tag_pks= things_to_tag,
+                                          user=self.request.user,
+                                          comment=reason)
+            
+
+
+        return self.get(request,*args,**kwargs)
+
 class ActionablesTagHistoryView(BasicTemplateView):
+
     template_name = 'mantis_actionables/%s/ActionTagHistoryList.html' % DINGOS_TEMPLATE_FAMILY
 
     title = 'Actionable Tag History'
