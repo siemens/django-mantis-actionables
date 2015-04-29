@@ -1,58 +1,54 @@
 {% extends "mantis_actionables/grappelli/base.html" %}
+
+{% load dingos_tags %}
+
 {% load staticfiles %}
 {% block javascripts %}
-    {{ block.super }}
-    <script>
-      var view_url = '{% url data_view_name %}'
-      var initial_filter = '{{ initial_filter }}'
-      var datatables_dom = '{{ datatables_dom }}'
-    </script>
+  {{ block.super }}
+  <script>
+    var view_url = '{% url data_view_name %}';
+    var initial_filter = '{{ initial_filter }}';
+    var datatables_dom = '{{ datatables_dom }}';
+    //set pagination_length here in order to transfer it to datatable init
+    var pagination_length = {{ table_rows }};
+  </script>
 {% endblock javascripts %}
 
 {% block content %}
-    <div id="grp-content-container">
-      <div class="l-2cr-responsive l-2cr-fluid">
-        <div class="c-2">
-          <div class="grp-module">
-            <div class="grp-row grp-cells">
-              {% for table in tables %}
+  <div id="grp-content-container">
+    <div class="l-2cr-responsive l-2cr-fluid">
+      <div class="c-2">
+        <div class="grp-module">
+          <div class="grp-row grp-cells">
+            {% for table in tables %}
               {% with table_name=table.0 cols=table.1 %}
                 <div class="grp-cell result_box">
                   <h2 class="result_head clearfix"> {{ table_name }} <span class="res_num"></span></h2>
                   <table id="{{ table_name|lower }}" cellspacing="0" class="grp-sortable result_table" width="100%">
                     <thead>
-                      <tr>
+                    <tr>
                       {% for col in cols.values %}
-                      {% with col_name=col.1 searchable=col.2 %}
-                        <th data-isearch="{{ searchable }}">{{ col_name }}</th>
-                      {% endwith %}
+                        {% with col_name=col.1 searchable=col.2 %}
+                          <th data-isearch="{{ searchable }}">{{ col_name }}</th>
+                        {% endwith %}
                       {% endfor %}
-                      </tr>
+                    </tr>
                     </thead>
-                    {# TODO filter section still hardcoded, should be changed when decided how #}
                     <tfoot>
-                      <!--tr>
-                        {% block data %}
-                          <td>
-                              <select id="{{ table_name|lower }}_tlp_filter"></select>
-                          </td>
-                          <td></td>
-                          {% if cols|length == 6 %}
-                            <td><select id="{{ table_name|lower }}_type_filter"></select></td>
-                          {% endif %}
-                          <td></td>
-                          <td><select id="{{ table_name|lower }}_ns_filter"></select></td>
-                          <td></td>
-                        {% endblock %}
-                      </tr-->
+                    <tr>
+                    {# add filters to the columns which are enabled via column_filter list provided in BasicTableDataProvider #}
+                      {% for i in cols.values|length|range %}
+                        <td>{% if i in column_filter %}<input type="text" placeholder="Column Search"/>{% endif %}</td>
+                      {% endfor %}
+                    </tr>
                     </tfoot>
                   </table>
                 </div>
               {% endwith %}
-              {% endfor %}
-            </div>
+            {% endfor %}
           </div>
         </div>
       </div>
     </div>
+  </div>
 {% endblock %}
