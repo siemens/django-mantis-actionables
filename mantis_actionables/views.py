@@ -707,13 +707,19 @@ class DashboardDataProvider(BasicTableDataProvider):
 
                 for id in node_ids:
                     node = reachability_graph.node[id]
+                    node_name = node['name']
+                    if node_name == '':
+                        node_name = '&lt;unnamed&gt;'
                     if node['iobject_type'] == 'STIX_Package':
-                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node['name'])
+                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node_name)
                         stix_list.append(link)
                     elif node['iobject_type'] == info_name:
-                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node['name'])
+                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node_name)
                         info_list.append(link)
-                row[1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[1])
+                name = _row[1]
+                if name == '':
+                    name = '&lt;unnamed&gt;'
+                row[1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), name)
                 row[offset+0] = ', '.join(stix_list)
                 row[offset+1] = ', '.join(info_list)
 
