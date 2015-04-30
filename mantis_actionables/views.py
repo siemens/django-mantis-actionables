@@ -24,6 +24,8 @@ from uuid import uuid4
 import datetime
 from querystring_parser import parser
 
+from django.utils.safestring import mark_safe
+
 from django.core.urlresolvers import reverse
 
 from django.shortcuts import render_to_response
@@ -53,9 +55,11 @@ from .filter import ActionablesContextFilter, SingletonObservablesFilter, Import
 
 from .forms import ContextEditForm
 
-from dingos.models import vIO2FValue, Identifier
+from dingos.models import vIO2FValue, Identifier, InfoObject
 
 from .tasks import actionable_tag_bulk_action
+from dingos.graph_traversal import follow_references
+from dingos.graph_utils import dfs_preorder_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,7 @@ def datatable_query(post, paginate_at, **kwargs):
     
     q = config['base'].objects
     base_filters = config.get('filters',[])
+    base_excludes = config.get('excludes',[])
 
     count =config.get('count',True)
     cols = dict((x, y[0]) for x, y in cols.items())
@@ -102,6 +107,9 @@ def datatable_query(post, paginate_at, **kwargs):
     # extend query by kwargs['filter']
     for filter in base_filters:
         q = q.filter(**filter)
+
+    for exclude in base_excludes:
+        q = q.exclude(**exclude)
 
     q = q.values_list(*(cols.values()))
     #sources__id for join on sources table
@@ -254,6 +262,7 @@ class BasicTableDataProvider(BasicJSONView):
 
                 query_config['base'] = this_table_spec['model']
                 query_config['filters'] = this_table_spec.get('filters',[])
+                query_config['excludes'] = this_table_spec.get('excludes',[])
                 query_config['count'] = this_table_spec.get('count',True)
 
                 COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
@@ -261,8 +270,11 @@ class BasicTableDataProvider(BasicJSONView):
 
                 this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
 
+                cls.curr_cols['end_matter'] = this_table_spec.get('end_matter','')
+
                 fillColDict(query_columns,COLS_TO_QUERY)
                 fillColDict(display_columns,COLS_TO_DISPLAY)
+
 
 
     def postprocess(self,table_name,res,q):
@@ -448,7 +460,262 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
 
+class DashboardDataProvider(BasicTableDataProvider):
+    view_name = "latest_external_reports"
 
+    table_spec = {}
+
+    TABLE_NAME_LATEST_EXTERNAL_REPORTS = 'Latest Partner STIX Reports'
+    TABLE_SPEC_LATEST_EXTERNAL_REPORTS = {
+        'model' : InfoObject,
+        'filters': [{'iobject_type__name': 'STIX_Package'},
+                    {'latest_of__isnull': False},
+                    ],
+        'excludes': [
+                     #{'name__startswith': 'Analysis report'},
+                     {'identifier__namespace__uri__contains':'siemens'}
+                     ],
+        'count' : False,
+        'COMMON_BASE' : [
+            ('timestamp', 'Import Timestamp', '0'), #0
+            ('create_timestamp', 'Source Timestamp','0'), #1
+            ('name','Report Name', '0'), #2
+            ('identifier__namespace__uri', 'Identifier Namespace URI', '0'), #3
+            ('identifier__uid', 'Identifier UID', '0'), #4
+        ],
+        'QUERY_ONLY' : [
+            ('id', 'InfoObjectID', '0'), #0
+            ('identifier__namespace__id', 'Identifier Namespace ID', '0'),  #1
+        ],
+        'DISPLAY_ONLY' : [
+            ('', 'TLP', '0'), #0
+        ]
+    }
+
+    TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS = 'Latest Partner Bulk CSV Imports'
+    TABLE_SPEC_LATEST_EXTERNAL_REPORTS_IMPORTS = {
+        'model' : ImportInfo,
+        'filters': [],
+        'excludes': [],
+        #'filters': [{'iobject_type__name': 'STIX_Package'},
+        #            {'latest_of__isnull': False}],
+        #'excludes': [{'name__startswith': 'Analysis report'},
+        #             ],
+        'count' : False,
+        'COMMON_BASE' : [
+            ('timestamp', 'Import Timestamp', '0'), #0
+            ('create_timestamp', 'Source Timestamp','0'), #1
+            ('name','Report Name', '0'), #2
+            ('namespace__uri', 'Namespace URI', '0'), #3
+            ('uid', 'UID', '0'), #4
+        ],
+        'QUERY_ONLY' : [
+            ('id', 'InfoObjectID', '0'), #0
+            #('identifier__namespace__id', 'Identifier Namespace ID', '0'),  #1
+        ],
+        'DISPLAY_ONLY' : [
+            #('', 'TLP', '0'), #0
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for filtering/managing Bulk imports.' % "/mantis/actionables/import_info")
+    }
+
+    TABLE_NAME_LATEST_INVESTIGATIONS = 'Latest INVES Reports'
+    TABLE_SPEC_LATEST_INVESTIGATIONS = {
+        'model': InfoObject,
+        'filters': [{'iobject_type__name': 'STIX_Package'},
+                    {'latest_of__isnull': False},
+                    {'identifier__namespace__uri__contains':'siemens'},
+                    {'name__regex': r"(?:INVES-[0-9]+$)"}],
+        'excludes': [],
+        'count': False,
+        'COMMON_BASE': [
+            ('identifier__latest__timestamp', 'Last Update Timestamp', '0'), #0
+            ('name', 'Report Name', '0'), #1
+            ('identifier__namespace__uri', 'Source', '0'), #2
+            ('yielded_by__user__username', 'Creator', '0'), #3
+        ],
+        'QUERY_ONLY': [
+            ('id', 'InfoObjectID', '0'), #0
+            ('yielded_by__user', 'UserID', '0'), #1
+            ('identifier', 'IdentifierID', '0'), #2
+        ],
+        'DISPLAY_ONLY': [
+            ('', 'Creation TS', '0'), #0
+            ('', 'TLP', '0'), #1
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
+
+    }
+
+    TABLE_NAME_LATEST_INCIDENTS_CREATED = 'Latest IR Reports'
+    TABLE_SPEC_LATEST_INCIDENTS_CREATED = {
+        'model': InfoObject,
+        'filters': [{'iobject_type__name': 'STIX_Package'},
+                    {'latest_of__isnull': False},
+                    {'identifier__namespace__uri__contains':'siemens'},
+                    {'name__regex': r"(?:IR-[0-9]+$)"}],
+        'excludes': [],
+        'count': False,
+        'COMMON_BASE': [
+            ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
+            ('name', 'Report Name', '0'), #1
+            ('identifier__namespace__uri', 'Source', '0'), #2
+            ('yielded_by__user__username', 'Creator', '0'), #3
+        ],
+        'QUERY_ONLY': [
+            ('id', 'InfoObjectID', '0'), #0
+            ('yielded_by__user', 'UserID', '0'), #1
+            ('identifier', 'IdentifierID', '0'), #2
+        ],
+        'DISPLAY_ONLY': [
+            ('', 'Creation TS', '0'), #0
+            ('', 'TLP', '0'), #1
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
+    }
+
+    TABLE_NAME_CURRENT_CAMPAIGNS = 'Latest Campaign STIX Objects'
+    TABLE_SPEC_CURRENT_CAMPAIGNS = {
+        'model': InfoObject,
+        'filters': [{'iobject_type__name': 'Campaign'},
+                    {'latest_of__isnull': False},
+                    ],
+        #'excludes': [],
+        'count': False,
+        'COMMON_BASE': [
+            ('name', 'Campaign Name', '0'), #0
+        ],
+        'QUERY_ONLY': [
+            ('id', 'InfoObjectID', '0'), #0
+        ],
+        'DISPLAY_ONLY': [
+            ('', 'Related STIXs', '0'), #0
+            ('', 'Related Threat Actors', '0'), #1
+        ]
+    }
+
+    TABLE_NAME_CURRENT_THREAT_ACTORS = 'Latest Threat Actor STIX Objects'
+    TABLE_SPEC_CURRENT_THREAT_ACTORS = {
+        'model': InfoObject,
+        'filters': [{'iobject_type__name': 'ThreatActor'},
+                    {'latest_of__isnull': False},
+                    ],
+        #'excludes': [],
+        'count': False,
+        'COMMON_BASE': [
+            ('name', 'Threat Actor', '0'), #0
+        ],
+        'QUERY_ONLY': [
+            ('id', 'InfoObjectID', '0'), #0
+        ],
+        'DISPLAY_ONLY': [
+            ('', 'Related STIXs', '0'), #0
+            ('', 'Related Campaigns', '0'), #1
+        ]
+    }
+
+    table_spec[table_name_slug(TABLE_NAME_LATEST_EXTERNAL_REPORTS)] = TABLE_SPEC_LATEST_EXTERNAL_REPORTS
+    table_spec[table_name_slug(TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS)] = TABLE_SPEC_LATEST_EXTERNAL_REPORTS_IMPORTS
+    table_spec[table_name_slug(TABLE_NAME_LATEST_INVESTIGATIONS)] = TABLE_SPEC_LATEST_INVESTIGATIONS
+    table_spec[table_name_slug(TABLE_NAME_LATEST_INCIDENTS_CREATED)] = TABLE_SPEC_LATEST_INCIDENTS_CREATED
+    table_spec[table_name_slug(TABLE_NAME_CURRENT_CAMPAIGNS)] = TABLE_SPEC_CURRENT_CAMPAIGNS
+    table_spec[table_name_slug(TABLE_NAME_CURRENT_THREAT_ACTORS)] = TABLE_SPEC_CURRENT_THREAT_ACTORS
+
+    def get_id_tlp_mapping(self, row_col, q):
+        iobject_ids = set()
+        for row in q:
+            iobject_ids.add(row[row_col])
+
+        # fetch all id -> TLP color mappings
+        select_columns = ['id', 'marking_thru__marking__fact_thru__fact__fact_values__value']
+        id2colors = dict(InfoObject.objects.filter(id__in=iobject_ids)
+                         .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
+                                 marking_thru__marking__fact_thru__fact__fact_term__attribute='color')
+                         .values_list(*select_columns))
+        # end TLP
+        return id2colors
+
+    def postprocess(self,table_name,res,q):
+        table_spec = self.table_spec[table_name]
+        offset = table_spec['offset']
+
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+            # gather all info object ids and namespaces
+            id2colors = self.get_id_tlp_mapping(offset+0, q)
+            #namespace_ids = set()
+            #for row in q:
+            #    namespace_ids.add(row[offset+1])
+
+            for _row in q:
+                row = [my_escape(e) for e in list(_row)]
+
+                # link to report
+                if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS):
+                    row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[2])
+                elif table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+                    row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':_row[offset+0]}), _row[2])
+
+
+                # tlp color
+                row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
+
+                res['data'].append(row)
+        elif table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
+            id2colors = self.get_id_tlp_mapping(offset+0, q)
+            for _row in q:
+                row = [my_escape(e) for e in list(_row)]
+                # the report name links to the investigation/incident context page, the symbol to the infoobject
+                row[1] = "<a href='%s'>%s</a> <a href='%s'><img src='/static/admin/img/selector-search.gif' alt='Lookup' height='16' width='16' /><a/>" % (
+                    reverse('actionables_context_view',kwargs={'context_name':_row[1]}),
+                    _row[1],
+                    reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}),
+                    )
+                # get the creation timestamp of this identifier and limit results to 1 result
+                row[offset+0] = InfoObject.objects.filter(identifier__id=int(_row[offset+2])).order_by('timestamp').values_list('timestamp')[0]
+                row[offset+1] = id2colors.get(int(_row[offset+0]), 0)
+                res['data'].append(row)
+        elif table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS) or table_name == table_name_slug(self.TABLE_NAME_CURRENT_THREAT_ACTORS):
+
+            # gather all campaign or threat actor ids
+            ids = []
+            for row in q:
+                ids.append(row[offset+0])
+
+            # fetch all necessary nodes relevant for the given campaign or threat actors
+            reachability_graph = follow_references(ids, direction='up')
+
+            # fetch threat actors (going down the graph), only one level needed
+            if table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS):
+                reachability_graph = follow_references(ids, direction='down', depth=1, graph=reachability_graph)
+
+            for _row in q:
+                row = [my_escape(e) for e in list(_row)] + ['']   # list has to be big enough
+
+                # collect all stix packages referencing this campaign (also campaigns/threat actors)
+                node_ids = list(dfs_preorder_nodes(reachability_graph, source=int(row[offset+0])))
+                stix_list = []
+                info_list = []
+                if table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS):
+                    info_name = 'ThreatActor'  # in the current campaign list we want to look at related threat actors
+                elif table_name == table_name_slug(self.TABLE_NAME_CURRENT_THREAT_ACTORS):
+                    info_name = 'Campaign'  # here at related campaigns
+
+                for id in node_ids:
+                    node = reachability_graph.node[id]
+                    if node['iobject_type'] == 'STIX_Package':
+                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node['name'])
+                        stix_list.append(link)
+                    elif node['iobject_type'] == info_name:
+                        link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node['name'])
+                        info_list.append(link)
+                row[0] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[0])
+                row[offset+0] = ', '.join(stix_list)
+                row[offset+1] = ', '.join(info_list)
+
+                res['data'].append(row)
 
 
 class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
@@ -676,9 +943,18 @@ class BasicDatatableView(BasicTemplateView):
 
         for table_name in self.table_spec:
             table_name_slug = table_name.lower().replace(' ','_')
+
+            print COLS[self.data_provider_class.__name__][table_name_slug]
             display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
                                                                                       COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
-            context['tables'].append((table_name,display_columns))
+
+            end_matter = COLS[self.data_provider_class.__name__][table_name_slug].get('end_matter',"")
+
+            #
+            # context['tables'].append((table_name,display_columns))
+            context['tables'].append( {'table_name': table_name,
+                                        'cols': display_columns,
+                                        'end_matter': end_matter})
 
         return context
 
@@ -732,6 +1008,21 @@ class UnifiedSearch(BasicDatatableView):
                   data_provider_class.TABLE_NAME_INFOBJECT_IDENTIFIER_UID,
                   data_provider_class.TABLE_NAME_IMPORT_INFO_NAME]
 
+class Dashboard(BasicDatatableView):
+
+    data_provider_class = DashboardDataProvider
+
+    template_name = 'mantis_actionables/%s/table_base.html' % DINGOS_TEMPLATE_FAMILY
+
+    title = 'Dashboard'
+
+    table_spec = [data_provider_class.TABLE_NAME_LATEST_EXTERNAL_REPORTS,
+                  data_provider_class.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS,
+                  data_provider_class.TABLE_NAME_LATEST_INVESTIGATIONS,
+                  data_provider_class.TABLE_NAME_LATEST_INCIDENTS_CREATED,
+                  data_provider_class.TABLE_NAME_CURRENT_CAMPAIGNS,
+                  data_provider_class.TABLE_NAME_CURRENT_THREAT_ACTORS,
+                  ]
 
 
 def processActionablesTagging(data,**kwargs):
