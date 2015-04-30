@@ -36,9 +36,9 @@ urlpatterns = patterns(
     url(r'^tbl_data/indicators_by_source$',
         SingeltonObservablesWithSourceOneTableDataProvider.as_view(),
         name=SingeltonObservablesWithSourceOneTableDataProvider.qualified_view_name()),
-    url(r'^latest_external_reports/$',
-        Dashboard.as_view(), name='actionables_latest_external_reports'),
-    url(r'^tbl_data/latest_external_reports$',
+    url(r'^dashboard/$',
+        Dashboard.as_view(), name='actionables_dashboard'),
+    url(r'^tbl_data/dashboard$',
         DashboardDataProvider.as_view(), name=DashboardDataProvider.qualified_view_name()),
 
     url(r'^tbl_data/unified_search$',

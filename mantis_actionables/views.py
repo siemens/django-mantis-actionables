@@ -24,6 +24,8 @@ from uuid import uuid4
 import datetime
 from querystring_parser import parser
 
+from django.utils.safestring import mark_safe
+
 from django.core.urlresolvers import reverse
 
 from django.shortcuts import render_to_response
@@ -268,8 +270,11 @@ class BasicTableDataProvider(BasicJSONView):
 
                 this_table_spec['offset'] = len(this_table_spec['COMMON_BASE'])
 
+                cls.curr_cols['end_matter'] = this_table_spec.get('end_matter','')
+
                 fillColDict(query_columns,COLS_TO_QUERY)
                 fillColDict(display_columns,COLS_TO_DISPLAY)
+
 
 
     def postprocess(self,table_name,res,q):
@@ -460,13 +465,15 @@ class DashboardDataProvider(BasicTableDataProvider):
 
     table_spec = {}
 
-    TABLE_NAME_LATEST_EXTERNAL_REPORTS = 'Latest External Reports'
+    TABLE_NAME_LATEST_EXTERNAL_REPORTS = 'Latest Partner STIX Reports'
     TABLE_SPEC_LATEST_EXTERNAL_REPORTS = {
         'model' : InfoObject,
         'filters': [{'iobject_type__name': 'STIX_Package'},
                     {'latest_of__isnull': False},
                     ],
-        'excludes': [{'name__startswith': 'Analysis report'},
+        'excludes': [
+                     #{'name__startswith': 'Analysis report'},
+                     {'identifier__namespace__uri__contains':'siemens'}
                      ],
         'count' : False,
         'COMMON_BASE' : [
@@ -485,7 +492,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ]
     }
 
-    TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS = 'Latest External Reports (Imports)'
+    TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS = 'Latest Partner Bulk CSV Imports'
     TABLE_SPEC_LATEST_EXTERNAL_REPORTS_IMPORTS = {
         'model' : ImportInfo,
         'filters': [],
@@ -507,15 +514,18 @@ class DashboardDataProvider(BasicTableDataProvider):
             #('identifier__namespace__id', 'Identifier Namespace ID', '0'),  #1
         ],
         'DISPLAY_ONLY' : [
-            ('', 'TLP', '0'), #0
-        ]
+            #('', 'TLP', '0'), #0
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for filtering/managing Bulk imports.' % "/mantis/actionables/import_info")
     }
 
-    TABLE_NAME_LATEST_INVESTIGATIONS = 'Latest Investigations started'
+    TABLE_NAME_LATEST_INVESTIGATIONS = 'Latest INVES Reports'
     TABLE_SPEC_LATEST_INVESTIGATIONS = {
         'model': InfoObject,
         'filters': [{'iobject_type__name': 'STIX_Package'},
                     {'latest_of__isnull': False},
+                    {'identifier__namespace__uri__contains':'siemens'},
                     {'name__regex': r"(?:INVES-[0-9]+$)"}],
         'excludes': [],
         'count': False,
@@ -533,14 +543,18 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
-        ]
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
+
     }
 
-    TABLE_NAME_LATEST_INCIDENTS_CREATED = 'Latest Incidents created'
+    TABLE_NAME_LATEST_INCIDENTS_CREATED = 'Latest IR Reports'
     TABLE_SPEC_LATEST_INCIDENTS_CREATED = {
         'model': InfoObject,
         'filters': [{'iobject_type__name': 'STIX_Package'},
                     {'latest_of__isnull': False},
+                    {'identifier__namespace__uri__contains':'siemens'},
                     {'name__regex': r"(?:IR-[0-9]+$)"}],
         'excludes': [],
         'count': False,
@@ -558,10 +572,12 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
-        ]
+        ],
+        # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
+        'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
     }
 
-    TABLE_NAME_CURRENT_CAMPAIGNS = 'Current List of Campaigns'
+    TABLE_NAME_CURRENT_CAMPAIGNS = 'Latest Campaign STIX Objects'
     TABLE_SPEC_CURRENT_CAMPAIGNS = {
         'model': InfoObject,
         'filters': [{'iobject_type__name': 'Campaign'},
@@ -581,7 +597,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ]
     }
 
-    TABLE_NAME_CURRENT_THREAT_ACTORS = 'Current List of Threat Actors'
+    TABLE_NAME_CURRENT_THREAT_ACTORS = 'Latest Threat Actor STIX Objects'
     TABLE_SPEC_CURRENT_THREAT_ACTORS = {
         'model': InfoObject,
         'filters': [{'iobject_type__name': 'ThreatActor'},
@@ -927,9 +943,18 @@ class BasicDatatableView(BasicTemplateView):
 
         for table_name in self.table_spec:
             table_name_slug = table_name.lower().replace(' ','_')
+
+            print COLS[self.data_provider_class.__name__][table_name_slug]
             display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
                                                                                       COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
-            context['tables'].append((table_name,display_columns))
+
+            end_matter = COLS[self.data_provider_class.__name__][table_name_slug].get('end_matter',"")
+
+            #
+            # context['tables'].append((table_name,display_columns))
+            context['tables'].append( {'table_name': table_name,
+                                        'cols': display_columns,
+                                        'end_matter': end_matter})
 
         return context
 
