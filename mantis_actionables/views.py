@@ -586,6 +586,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         #'excludes': [],
         'count': False,
         'COMMON_BASE': [
+        ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
             ('name', 'Campaign Name', '0'), #0
         ],
         'QUERY_ONLY': [
@@ -606,6 +607,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         #'excludes': [],
         'count': False,
         'COMMON_BASE': [
+            ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
             ('name', 'Threat Actor', '0'), #0
         ],
         'QUERY_ONLY': [
@@ -711,7 +713,7 @@ class DashboardDataProvider(BasicTableDataProvider):
                     elif node['iobject_type'] == info_name:
                         link = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':node['iobject_pk']}), node['name'])
                         info_list.append(link)
-                row[0] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[0])
+                row[1] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[1])
                 row[offset+0] = ', '.join(stix_list)
                 row[offset+1] = ', '.join(info_list)
 
