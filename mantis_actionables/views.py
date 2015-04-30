@@ -112,6 +112,7 @@ def datatable_query(post, **kwargs):
 
     # Treat the filter values (WHERE clause)
     col_filters = []
+    filter_q = []
     for colk, colv in post_dict.get('columns', {}).iteritems():
         srch = colv.get('search', False)
         if not srch:
@@ -121,9 +122,15 @@ def datatable_query(post, **kwargs):
         if not srch or (type(srch) == type(basestring) and srch.lower()=='all'):
             continue
         # srch should have a value
-        col_filters.append({
-            display_cols[colk] + '__icontains' : srch
-        })
+
+        col_filter_treatment = display_cols[colk]
+        if callable(col_filter_treatment):
+            filter_q.append(col_filter_treatment(srch))
+
+        else:
+            col_filters.append({
+                col_filter_treatment + '__icontains' : srch
+            })
 
     if col_filters:
         queries = [Q(**filter) for filter in col_filters]
@@ -136,6 +143,12 @@ def datatable_query(post, **kwargs):
         # Query the model
         q = q.filter(query)
 
+    if filter_q:
+        query = filter_q.pop()
+        for q in filter_q:
+            query &= q
+
+        q = q.filter(query)
 
     col_search = []
     # The search value
@@ -332,6 +345,8 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
 
+    my_test = lambda filter_wert : Q(**{'sources__import_info__name__icontains':filter_wert}) | Q(**{'type__name__icontains':filter_wert})
+
     ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
         'count': False,
@@ -355,7 +370,7 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                              ('id','Singleton Observable PK','0') #6
                             ],
         'DISPLAY_ONLY' :  [('sources__import_info__namespace__uri','Report Source','0'),
-                             ('sources__import_info__name','Report Name','0'),
+                             (my_test,'Report Name','0'),
                              ],
         #column ids (starting with 0 = first column) where a column based filter should be displayed
         'COLUMN_FILTER' : [2,3,4,5,7,8]
