@@ -31,6 +31,8 @@
              })*/
 
             tables[tbl_key] = $(this).DataTable({
+                //set pagingation length here, pagination_length is provided by the view rendering this page
+                "pageLength" : pagination_length,
                 "autoWidth": true,
                 "columnDefs" : colDef,
                 "searching": true,
@@ -138,5 +140,16 @@
             }
         });
 
+        // Initilize the column filters
+        // enable filter on every column (within every table on this page) if there is an '<input>' field in this column's footer
+        $.each(tables, function(table_id, table) {
+            table.columns().every(function() {
+                var that = this;
+                $('input',this.footer()).on('keyup change', function() {
+                    that.search(this.value)
+                        .draw();
+                });
+            });
+        });
     });
 }(django.jQuery));
