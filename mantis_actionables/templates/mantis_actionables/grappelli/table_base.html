@@ -15,13 +15,17 @@
 {% endblock javascripts %}
 
 {% block content %}
-  <div id="grp-content-container">
-    <div class="l-2cr-responsive l-2cr-fluid">
-      <div class="c-2">
-        <div class="grp-module">
-          <div class="grp-row grp-cells">
-            {% for table in tables %}
-              {% with table_name=table.0 cols=table.1 col_filter=table.2%}
+
+    <div id="grp-content-container">
+      <div class="l-2cr-responsive l-2cr-fluid">
+        <div class="c-2">
+              {% for table in tables %}
+                      {% with table_name=table.table_name cols=table.cols col_filter=table.col_filter%}
+          <div class="grp-module">
+
+
+            <div class="grp-row grp-cells">
+
                 <div class="grp-cell result_box">
                   <h2 class="result_head clearfix"> {{ table_name }} <span class="res_num"></span></h2>
                   <table id="{{ table_name|lower }}" cellspacing="0" class="grp-sortable result_table" width="100%">
@@ -43,10 +47,20 @@
                     </tr>
                     </tfoot>
                   </table>
+
                 </div>
+
               {% endwith %}
-            {% endfor %}
+
+            </div>
+
+
+                      <h3>                  {{ table.end_matter }}</h3>
+
+
+
           </div>
+              {% endfor %}
         </div>
       </div>
     </div>
