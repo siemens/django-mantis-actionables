@@ -212,9 +212,6 @@ class BasicTableDataProvider(BasicJSONView):
     #pagination length
     table_rows = 10
 
-    #column ids (starting with 0 = first column) where a column based filter should be displayed
-    column_filter = []
-
     @classmethod
     def get_cols_dict(cls,table_name):
 
@@ -359,14 +356,14 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                             ],
         'DISPLAY_ONLY' :  [('sources__import_info__namespace__uri','Report Source','0'),
                              ('sources__import_info__name','Report Name','0'),
-                             ]
+                             ],
+        #column ids (starting with 0 = first column) where a column based filter should be displayed
+        'COLUMN_FILTER' : [2,3,4,5,7,8]
     }
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
 
     table_rows = 10
-
-    column_filter = [2,3,4,5,7,8]
 
     @classmethod
     def ALL_IMPORTS_POSTPROCESSOR(cls,table_spec,res,q):
@@ -490,7 +487,9 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
             ],
         'QUERY_ONLY' : [('iobject_id','XXX',0)],
 
-        'DISPLAY_ONLY' :  []
+        'DISPLAY_ONLY' :  [],
+        #column ids (starting with 0 = first column) where a column based filter should be displayed
+        'COLUMN_FILTER' : []
 
     }
 
@@ -672,7 +671,6 @@ class BasicDatatableView(BasicTemplateView):
         context['title'] = self.title
         context['initial_filter'] = self.initial_filter
         context['table_rows'] = self.data_provider_class.table_rows
-        context['column_filter'] = self.data_provider_class.column_filter
         context['tables'] = []
 
         context['datatables_dom'] = self.datatables_dom
@@ -682,7 +680,8 @@ class BasicDatatableView(BasicTemplateView):
             table_name_slug = table_name.lower().replace(' ','_')
             display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
                                                                                       COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
-            context['tables'].append((table_name,display_columns))
+            col_filter = self.data_provider_class.table_spec[table_name_slug].get('COLUMN_FILTER',[])
+            context['tables'].append((table_name,display_columns,col_filter))
 
         return context
 
