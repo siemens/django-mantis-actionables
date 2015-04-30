@@ -479,7 +479,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'COMMON_BASE' : [
             ('timestamp', 'Import Timestamp', '0'), #0
             ('create_timestamp', 'Source Timestamp','0'), #1
-            ('name','Report Name', '0'), #2
+            ('name','Report Name', '1'), #2
             ('identifier__namespace__uri', 'Identifier Namespace URI', '0'), #3
             ('identifier__uid', 'Identifier UID', '0'), #4
         ],
@@ -505,7 +505,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'COMMON_BASE' : [
             ('timestamp', 'Import Timestamp', '0'), #0
             ('create_timestamp', 'Source Timestamp','0'), #1
-            ('name','Report Name', '0'), #2
+            ('name','Report Name', '1'), #2
             ('namespace__uri', 'Namespace URI', '0'), #3
             ('uid', 'UID', '0'), #4
         ],
@@ -531,7 +531,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update Timestamp', '0'), #0
-            ('name', 'Report Name', '0'), #1
+            ('name', 'Report Name', '1'), #1
             ('identifier__namespace__uri', 'Source', '0'), #2
             ('yielded_by__user__username', 'Creator', '0'), #3
         ],
@@ -560,7 +560,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
-            ('name', 'Report Name', '0'), #1
+            ('name', 'Report Name', '1'), #1
             ('identifier__namespace__uri', 'Source', '0'), #2
             ('yielded_by__user__username', 'Creator', '0'), #3
         ],
@@ -587,7 +587,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'count': False,
         'COMMON_BASE': [
         ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
-            ('name', 'Campaign Name', '0'), #0
+            ('name', 'Campaign Name', '1'), #0
         ],
         'QUERY_ONLY': [
             ('id', 'InfoObjectID', '0'), #0
@@ -608,7 +608,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
-            ('name', 'Threat Actor', '0'), #0
+            ('name', 'Threat Actor', '1'), #0
         ],
         'QUERY_ONLY': [
             ('id', 'InfoObjectID', '0'), #0
