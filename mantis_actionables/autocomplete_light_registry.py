@@ -17,12 +17,12 @@
 
 
 import autocomplete_light
-from .models import TagName
+from .models import ActionableTag
 
 class AutocompleteActionables(autocomplete_light.AutocompleteModelBase):
-    model = TagName
+    model = ActionableTag
     search_fields = ['name']
-    choices = TagName.objects.all()
+    choices = ActionableTag.objects.all()
 
     attrs={
         'placeholder': 'Type in tag here..',
