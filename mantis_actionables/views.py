@@ -1212,10 +1212,6 @@ class ActionablesContextView(BasicFilterView):
 
     @property
     def queryset(self):
-        # tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
-        #                                  .filter(actionable_tag_thru__content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)\
-        #                                 .values_list('actionable_tag_thru__object_id',flat=True)
-
         return SingletonObservable.objects.filter(actionable_tags__context__name=self.curr_context_name).select_related('type','subtype',
                                                                                            'actionable_tags__context__name',
                                                                                            'actionable_tags__name').\
@@ -1223,15 +1219,6 @@ class ActionablesContextView(BasicFilterView):
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
             prefetch_related('sources__import_info','sources__import_info__namespace')
-
-        #TODO delete
-        # return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
-        #                                                                                    'actionable_tags__context__name',
-        #                                                                                    'actionable_tags__name').\
-        #     prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
-        #     prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
-        #     prefetch_related('sources__iobject_identifier__latest__iobject_type').\
-        #     prefetch_related('sources__import_info','sources__import_info__namespace')
 
 
     def get_context_data(self, **kwargs):

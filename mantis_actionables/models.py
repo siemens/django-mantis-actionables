@@ -41,7 +41,6 @@ logger = logging.getLogger(__name__)
 
 import read_settings
 
-#TODO cacheing, delete TagName
 class CachingManager(models.Manager):
     """
     For models that have a moderate amount of entries and are always queried
@@ -119,9 +118,8 @@ class ActionableTag(TagBase):
     context = models.ForeignKey('Context',
                                 null=True)
 
-    #TODO managers needed?
-    #objects = models.Manager()
-    #cached_objects = CachingManager()
+    objects = models.Manager()
+    cached_objects = CachingManager()
 
     class Meta:
         verbose_name = _("ActionableTag")
@@ -177,17 +175,8 @@ class ActionableTag(TagBase):
 
             context_name_set.add(context_name)
 
-            #TODO delete, not needed anymore
-            #tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
-
-            #TODO add cached_objects here?
-            actionable_tag, created = ActionableTag.objects.get_or_create(name=tag_name,
-                                                                          context_id=context.id)
-            # ActionableTag.cached_objects.get_or_create(context_id=context.pk,
-            #                                             tag_id=tag_name.pk)
-
-
-
+            actionable_tag, created = ActionableTag.cached_objects.get_or_create(name=tag_name,
+                                                                                 context_id=context.id)
 
             actionable_tag_list.append(actionable_tag)
 
@@ -198,19 +187,6 @@ class ActionableTag(TagBase):
         elif action == 'remove':
             action_flag = ActionableTaggingHistory.REMOVE
 
-        #TODO delete if not needed anymore
-        #TODO no info about affected_tags provided by taggit module...
-        # obj_to_tag = list(thing_to_tag_model.objects.filter(id__in=thing_to_tag_pks))
-        #
-        # context_delete = [x for x in actionable_tag_list if x.name == x.context.name]
-        #
-        # for obj in obj_to_tag:
-        #     logger.debug("Treating thing to tag with pk %s" % obj.pk)
-        #     if action_flag == ActionableTaggingHistory.ADD:
-        #         #obj.tags.add(actionable_tag_list)
-        #     elif action_flag == ActionableTaggingHistory.REMOVE:
-        #         #obj.tags.remove(actionable_tag_list)
-
         for pk in thing_to_tag_pks:
             for actionable_tag in actionable_tag_list:
                 affected_tags = set([])
@@ -220,26 +196,15 @@ class ActionableTag(TagBase):
                                                                object_id=pk,
                                                                content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
 
-                    # actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
-                    #                                                                   object_id=pk,
-                    #                                                                   content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                     if created:
                         affected_tags.add(actionable_tag)
 
-                    #TODO change logger output
-                    #TODO Logger output check
                     logger.debug("tagged_actionable_item %s, created: %s" % (tagged_actionable_item.pk,created))
 
                 elif action_flag == ActionableTaggingHistory.REMOVE:
-                    print "DEBUG"
-                    print "CALLED REMOVE"
                     tagged_actionable_item = TaggedActionableItem.objects.filter(tag_id=actionable_tag.id,
                                                                               object_id=pk,
                                                                               content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
-
-                    # actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
-                    #                                                     object_id=pk,
-                    #                                                     content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
 
                     if tagged_actionable_item:
                         tagged_actionable_item.delete()
@@ -251,13 +216,7 @@ class ActionableTag(TagBase):
                         tagged_actionable_items = TaggedActionableItem.objects.filter(tag__context=actionable_tag.context,
                                                                                      object_id=pk,
                                                                                      content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
-                        print tagged_actionable_items
-                        print "---"
 
-
-                        # actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag__context=actionable_tag.context,
-                        #                                                     object_id=pk,
-                        #                                                     content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
                         for tagged_actionable_item in tagged_actionable_items:
                             affected_tags.add(tagged_actionable_item.tag)
                             tagged_actionable_item.delete()
@@ -276,24 +235,23 @@ class ActionableTag(TagBase):
                                                      thing_to_tag_pks,
                                                      user=user,
                                                      comment=comment)
-        #TODO refactor
-        # if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
-        #     singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
-        #     for singleton in singletons:
-        #
-        #         actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
-        #                                                           x.actionable_tag.tag.name),
-        #                                      singleton.actionable_tags.all()))
-        #         actionable_tag_list_repr = list(actionable_tag_set)
-        #         actionable_tag_list_repr.sort()
-        #
-        #         updated_tag_info = ",".join(actionable_tag_list_repr)
-        #
-        #         singleton.actionable_tags_cache = updated_tag_info
-        #
-        #         logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
-        #
-        #         singleton.save()
+
+        if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks)
+            for singleton in singletons:
+                actionable_tag_set = set(map(lambda x: "%s:%s" % (x[1],
+                                                                  x[0]),
+                                             singleton.actionable_tags.values_list('name','context__name')))
+                actionable_tag_list_repr = list(actionable_tag_set)
+                actionable_tag_list_repr.sort()
+
+                updated_tag_info = ",".join(actionable_tag_list_repr)
+
+                singleton.actionable_tags_cache = updated_tag_info
+
+                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
+
+                singleton.save()
 
 
 class TaggedActionableItem(GenericTaggedItemBase):
@@ -641,8 +599,6 @@ class SingletonObservable(models.Model):
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
-    #TODO delete, add related_query_name here?
-    #actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
     actionable_tags = TaggableManager(through=TaggedActionableItem)
 
     mantis_tags = models.TextField(blank=True,default='')
@@ -784,8 +740,6 @@ class ImportInfo(models.Model):
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
-    #TODO delete here
-    #actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
     actionable_tags = TaggableManager(through=TaggedActionableItem)
 
     related_stix_entities = models.ManyToManyField(STIX_Entity)
@@ -826,38 +780,6 @@ class Context(models.Model):
     def get_absolute_url(self):
         from django.core.urlresolvers import reverse
         return reverse('actionables_context_view', args=[self.name])
-
-
-# class TagName(models.Model):
-#     name = models.CharField(max_length=40,unique=True)
-#     objects = models.Manager()
-#     cached_objects = CachingManager()
-#
-#
-#
-#     def __unicode__(self):
-#         return "%s" % (self.name)
-
-
-
-
-
-# class ActionableTag2X(models.Model):
-#
-#     actionable_tag = models.ForeignKey(ActionableTag,
-#                                 related_name='actionable_tag_thru')
-#
-#
-#     content_type = models.ForeignKey(ContentType)
-#     object_id = models.PositiveIntegerField()
-#     tagged = generic.GenericForeignKey('content_type', 'object_id')
-#
-#     class Meta:
-#         unique_together = ('actionable_tag',
-#                            'content_type',
-#                            'object_id',
-#                            )
-
 
 
 class ActionableTaggingHistory(models.Model):
