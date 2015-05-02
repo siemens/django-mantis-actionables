@@ -80,13 +80,13 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='actionabletag',
             name='name',
-            field=models.CharField(default='to-delete', unique=True, max_length=100, verbose_name='Name'),
+            field=models.CharField(default='to-delete', unique=False, max_length=100, verbose_name='Name'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='actionabletag',
             name='slug',
-            field=models.SlugField(default='to-delete', unique=True, max_length=100, verbose_name='Slug'),
+            field=models.SlugField(default='to-delete', unique=False, max_length=100, verbose_name='Slug'),
             preserve_default=False,
         ),
         migrations.AddField(
@@ -115,5 +115,5 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             save_tags_forward,
             lambda x,y : None
-        ),
+        )
     ]
