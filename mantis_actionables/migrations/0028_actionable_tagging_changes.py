@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('contenttypes', '0001_initial'),
-        ('mantis_actionables', '0026_auto_20150312_1341'),
+        ('mantis_actionables', '0027_context_changes'),
     ]
 
     operations = [
@@ -68,18 +68,6 @@ class Migration(migrations.Migration):
             model_name='singletonobservable',
             name='actionables_tags',
             field=taggit.managers.TaggableManager(to='mantis_actionables.ActionableTag', through='mantis_actionables.TaggedActionableItem', help_text='A comma-separated list of tags.', verbose_name='Tags'),
-            preserve_default=True,
-        ),
-        migrations.AlterField(
-            model_name='context',
-            name='related_incident_id',
-            field=models.SlugField(help_text=b'Enter here the number of the associated CERT incident', max_length=40, blank=True),
-            preserve_default=True,
-        ),
-        migrations.AlterField(
-            model_name='context',
-            name='type',
-            field=models.SmallIntegerField(default=10, choices=[(10, b'INVES'), (20, b'IR'), (30, b'CERT')]),
             preserve_default=True,
         ),
         migrations.AlterUniqueTogether(
