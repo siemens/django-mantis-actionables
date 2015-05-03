@@ -985,7 +985,6 @@ class BasicDatatableView(BasicTemplateView):
         for table_name in self.table_spec:
             table_name_slug = table_name.lower().replace(' ','_')
 
-            print COLS[self.data_provider_class.__name__][table_name_slug]
             display_columns = COLS[self.data_provider_class.__name__][table_name_slug].get('display_columns',
                                                                                       COLS[self.data_provider_class.__name__][table_name_slug]["query_columns"])
             col_filter = self.data_provider_class.table_spec[table_name_slug].get('COLUMN_FILTER',[])
@@ -1210,8 +1209,6 @@ class ActionablesContextView(BasicFilterView):
             for pk,context_name,tag_name in tag_infos:
                 if context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',('ImportInfo',pk))
-
-            print self.object2tag_map
 
         if object:
 
