@@ -137,6 +137,7 @@ class BulkTaggingForm(ResultActionForm):
 
         if self.action and self.action == 'remove':
             if cleaned_data.get('reason','').strip() == '':
+
                 self.add_error('reason', forms.ValidationError("Please enter a reason for removing the tags."))
 
         return cleaned_data

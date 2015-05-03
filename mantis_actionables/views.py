@@ -1289,13 +1289,12 @@ class ActionablesContextView(BasicFilterView):
 
         form_valid = self.form.is_valid()
         cleaned_data = self.form.cleaned_data
-        if not cleaned_data['reason']:
-            reason = 'Bulk tagging carried out in context of %s' % self.curr_context_name
-        else:
-            reason = cleaned_data['reason']
 
         if form_valid:
-
+            if not cleaned_data['reason']:
+                reason = 'Bulk tagging carried out in context of %s' % self.curr_context_name
+            else:
+                reason = cleaned_data['reason']
 
             tags = map(lambda x: x.strip(), cleaned_data['tags'].split(','))
             context_name_pairs = map(lambda x : (cleaned_data['context'],x), tags)
