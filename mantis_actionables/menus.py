@@ -27,6 +27,7 @@ Menu.add_item("mantis_main",
                        MenuItem("Dashboard", reverse("actionables_dashboard"), weight = 5 ),
                        MenuItem("Import Sources", reverse("actionables_all_imports"), weight = 5 ),
                        MenuItem("Status Infos", reverse("actionables_all_status_infos"), weight = 5 ),
+                       MenuItem("CSV Imports", reverse("actionables_import_info_list"), weight = 5 ),
                        MenuItem("Investigations", reverse("actionables_context_list"), weight = 5 ),
                    )
                )
