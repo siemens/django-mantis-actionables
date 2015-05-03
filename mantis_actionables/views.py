@@ -362,7 +362,13 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     TABLE_NAME_ALL_IMPORTS = 'Indicators by Source'
 
-    my_test = lambda filter_wert : Q(**{'sources__import_info__name__icontains':filter_wert}) | Q(**{'type__name__icontains':filter_wert})
+    # Report Name Query
+    # The function below generates a Q object that can be used as
+    # first argument to a 'DISPLAY_ONLY' column. Problem is that
+    # if the SingletonObservable occurs both in a STIX Object and a
+    # ImportInfo, always rows for both are returned, which is confusing.
+
+    double_barrelled_name_query = lambda filter_wert : Q(**{'sources__import_info__name__icontains':filter_wert}) | Q(**{'sources__top_level_iobject__name__icontains':filter_wert})
 
     ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
@@ -374,11 +380,11 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                 ('type__name','Type','0'), #2
                 ('subtype__name','Subtype','0'), #3
                 ('value','Value','1'), #4
+                ('sources__iobject_identifier__namespace__uri','Indicator Source','0'), #0
                 ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
                 ('sources__related_stix_entities__essence','Context Info','0'), #6
             ],
         'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
-
                              ('sources__top_level_iobject__name','Report Name','0'), #1
                              ('sources__top_level_iobject_id','Report InfoObject PK','0'), #2
                              ('sources__import_info__namespace__uri','Report Source','0'), #3
@@ -387,10 +393,12 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                              ('id','Singleton Observable PK','0') #6
                             ],
         'DISPLAY_ONLY' :  [('sources__import_info__namespace__uri','Report Source','0'),
-                             (my_test,'Report Name','0'),
+                           # Below, you can try the Q-object generator from above
+                             ('' # double_barrelled_name_query
+                             ,'Report Name','0'),
                              ],
         #column ids (starting with 0 = first column) where a column based filter should be displayed
-        'COLUMN_FILTER' : [2,3,4,5,7,8]
+        'COLUMN_FILTER' : [2,3]
     }
 
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS)] = ALL_IMPORTS_TABLE_SPEC
