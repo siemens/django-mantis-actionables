@@ -9,6 +9,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AlterUniqueTogether(
+            name='actionabletag',
+            unique_together=set([('context', 'name')]),
+        ),
         migrations.AlterField(
                     model_name='actionabletag',
                     name='name',

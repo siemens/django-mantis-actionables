@@ -58,10 +58,10 @@ class Migration(migrations.Migration):
             },
             bases=(models.Model,),
         ),
-        migrations.AlterUniqueTogether(
-            name='actionabletag2x',
-            unique_together=None,
-        ),
+        #migrations.AlterUniqueTogether(
+        #    name='actionabletag2x',
+        #    unique_together=None,
+        #),
         migrations.RemoveField(
             model_name='actionabletag2x',
             name='actionable_tag',
@@ -101,10 +101,7 @@ class Migration(migrations.Migration):
             field=taggit.managers.TaggableManager(to='mantis_actionables.ActionableTag', through='mantis_actionables.TaggedActionableItem', help_text='A comma-separated list of tags.', verbose_name='Tags'),
             preserve_default=True,
         ),
-        migrations.AlterUniqueTogether(
-            name='actionabletag',
-            unique_together=set([('context', 'name')]),
-        ),
+
         migrations.RemoveField(
             model_name='actionabletag',
             name='tag',
