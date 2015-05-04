@@ -380,9 +380,9 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                 ('type__name','Type','0'), #2
                 ('subtype__name','Subtype','0'), #3
                 ('value','Value','1'), #4
-                ('sources__iobject_identifier__namespace__uri','Indicator Source','0'), #0
-                ('sources__related_stix_entities__entity_type__name','Context Type','0'), #5
-                ('sources__related_stix_entities__essence','Context Info','0'), #6
+                ('sources__iobject_identifier__namespace__uri','Indicator Source','0'), #5
+                ('sources__related_stix_entities__entity_type__name','Context Type','0'), #6
+                ('sources__related_stix_entities__essence','Context Info','0'), #7
             ],
         'QUERY_ONLY' : [('sources__top_level_iobject_identifier__namespace__uri','Report Source','0'), #0
                              ('sources__top_level_iobject__name','Report Name','0'), #1
@@ -424,7 +424,11 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
             row[4] = "<a href='%s'>%s</a>" % (reverse('actionables_singleton_observables_details',kwargs={'pk':int(row[offset+6])}),
                                                                  row[4])
 
+            if not row[5]:
+                row[5] = row[offset+3]
             row = row[:-5]
+
+
             res['data'].append(row)
 
 
