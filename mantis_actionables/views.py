@@ -1249,6 +1249,8 @@ class ActionablesContextView(BasicFilterView):
         context['isEditable'] = True
 
         context['ContextMetaDataWidgetConfig'] = {'action_buttons' : ['edit','show_history']}
+
+
         return context
 
 
@@ -1264,6 +1266,7 @@ class ActionablesContextView(BasicFilterView):
         if not self.form:
             self.form = BulkTaggingForm(fixed_context = self.curr_context_name,
                                         result_pks= map(lambda x: x.pk, self.queryset))
+
 
         return super(ActionablesContextView,self).get(request, *args, **kwargs)
 

@@ -98,7 +98,7 @@
 
          <tr class="grp-row grp-row-{% cycle 'odd' 'even' as odd_even %}">
            <td>
-          {% checkbox_by_label view.form.checked_items object.pk %}
+               {{ view.form.mc_field_by_value |keyvalue:'checked_items'|keyvalue:object.pk }}
            </td>
              <td class="w-1 nowrap middle">{{ object.type.name }}</td>
            <td class="w-1 nowrap middle">{{ object.subtype.name }}</td>
