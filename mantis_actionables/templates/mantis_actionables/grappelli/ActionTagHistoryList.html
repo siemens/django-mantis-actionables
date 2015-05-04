@@ -51,7 +51,7 @@
                 <td>{{ obj.value }}</td>
 
                 <td>
-                {% show_TagDisplay entry.tag__tag__name None False %}
+                {% show_TagDisplay entry.tag__name None False %}
                 </td>
               <td>{% with action=map_action|get_value:entry.action %}{{ action.1 }}{% endwith %}</td>
               <td>{{ entry.user__username }}</td>
