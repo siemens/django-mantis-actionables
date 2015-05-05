@@ -47,6 +47,7 @@ def save_tags_forward(apps, schema_editor):
     ActionableTag.objects.filter(name="to-delete").delete()
 
 
+
 class Migration(migrations.Migration):
     dependencies = [
         ('contenttypes', '0001_initial'),
@@ -119,7 +120,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='actionabletag',
-            unique_together=set([]),
+            unique_together=None,
         ),
         migrations.RemoveField(
             model_name='actionabletag',
