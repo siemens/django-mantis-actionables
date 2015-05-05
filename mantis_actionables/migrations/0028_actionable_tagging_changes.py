@@ -132,8 +132,5 @@ class Migration(migrations.Migration):
             save_tags_forward,
             lambda x,y : None
         ),
-        migrations.AlterUniqueTogether(
-            name='actionabletag',
-            unique_together=set([('context', 'name')]),
-        ),
+
     ]
