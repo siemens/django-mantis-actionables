@@ -9,20 +9,34 @@ tags_infos_to_transfer = None
 
 def extract_tag_infos_forward(apps, schema_editor):
     global tags_infos_to_transfer
+    global existing_tags
+    ActionableTag = apps.get_model("mantis_actionables","ActionableTag")
+
+    existing_tags = list(ActionableTag.objects.values('tag__name','context_id','id'))
     ActionableTag2X = apps.get_model("mantis_actionables","ActionableTag2X")
     tags_infos_to_transfer = list(ActionableTag2X.objects.values('actionable_tag__tag__name','actionable_tag__context_id','content_type_id','object_id','actionable_tag_id'))
 
 
 def save_tags_forward(apps, schema_editor):
     global tags_infos_to_transfer
+    global existing_tags
+
     tag_id_mapping = {}
+
+    for tag_info in existing_tags:
+        atag, created = ActionableTag.objects.get_or_create(context_id=tag_info['context_id'],
+                                                            name=tag_info['tag__name'])
+        tag_id_mapping[tag_info['id']] = atag.id
+
+
     for tag_info in tags_infos_to_transfer:
-        atag, created = ActionableTag.objects.get_or_create(context_id=tag_info['actionable_tag__context_id'],
-                                                            name=tag_info['actionable_tag__tag__name'])
+        atag = ActionableTag.objects.get(context_id=tag_info['actionable_tag__context_id'],
+                                         name=tag_info['actionable_tag__tag__name'])
+
         tagged_actionable_item = TaggedActionableItem.objects.get_or_create(tag=atag,
                                                                             content_type_id=tag_info['content_type_id'],
                                                                             object_id=tag_info['object_id'])
-        tag_id_mapping[tag_info['actionable_tag_id']] = atag.id
+
 
     #Update tag info in TaggingHistory
     for entry in ActionableTaggingHistory.objects.all():
