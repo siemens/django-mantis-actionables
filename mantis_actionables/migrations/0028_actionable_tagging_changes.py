@@ -58,6 +58,7 @@ class Migration(migrations.Migration):
             extract_tag_infos_forward,
             lambda x,y : None
         ),
+
         migrations.CreateModel(
             name='TaggedActionableItem',
             fields=[
@@ -103,6 +104,7 @@ class Migration(migrations.Migration):
             field=models.SlugField(default='to-delete', unique=False, max_length=100, verbose_name='Slug'),
             preserve_default=False,
         ),
+
         migrations.AddField(
             model_name='importinfo',
             name='actionable_tags',
@@ -115,7 +117,10 @@ class Migration(migrations.Migration):
             field=taggit.managers.TaggableManager(to='mantis_actionables.ActionableTag', through='mantis_actionables.TaggedActionableItem', help_text='A comma-separated list of tags.', verbose_name='Tags'),
             preserve_default=True,
         ),
-
+        migrations.AlterUniqueTogether(
+            name='actionabletag',
+            unique_together=set([]),
+        ),
         migrations.RemoveField(
             model_name='actionabletag',
             name='tag',
@@ -126,5 +131,9 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             save_tags_forward,
             lambda x,y : None
-        )
+        ),
+        migrations.AlterUniqueTogether(
+            name='actionabletag',
+            unique_together=set([('context', 'name')]),
+        ),
     ]
