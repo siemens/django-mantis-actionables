@@ -55,45 +55,57 @@ from tasks import async_export_to_actionables
 
 logger = logging.getLogger(__name__)
 
-#content_type_id
+# Get content type of singleton observable; we need that later
+# to fill a generic foreign key field pointing to a singleton observable
+# To learn about generic foreign keys, look at
+#   https://docs.djangoproject.com/en/1.8/ref/contrib/contenttypes/
+#
+
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
-
-#build a name to pk mapping for SingletonObservableTypes on server startup
-singleton_observable_types = {}
-singleton_observable_types_qs = SingletonObservableType.objects.all()
-for type in singleton_observable_types_qs:
-    singleton_observable_types[type.name] = type.pk
-
-
-#build a name to pk mapping for SingletonObservableTypes on server startup
-singleton_observable_subtypes = {}
-singleton_observable_subtypes_qs = SingletonObservableSubtype.objects.all()
-for type in singleton_observable_subtypes_qs:
-    singleton_observable_subtypes[type.name] = type.pk
-
-#color tlp mapping
-tlp_color_map = {}
-for (id,color) in Source.TLP_KIND:
-    tlp_color_map[color.lower()] = id
-
-
 
 def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name,fact_pks):
     """
-    When importing changes in dingos-tags that lead to changes
-    in the mantis_actionable tags, we want to provide an appropriate comment
-    also in the history of the actionable tags.
+    Find history information associated with an action (add/remove) on a tag in Dingos.
 
-    Problem: since the tag transfer may happen at any time and
-    the set of dingos tags associated with a singleton observable
-    is determined 'by bulk', we must try to find out the likely comment
-    from the history of the dingos tags.
+    Tags may be associated with "things" in Django Dingos (i.e., the STIX/CybOX) world.
 
-    We do this by filtering the dingos thag history for fitting dingos tag history items;
+    When importing information from the STIX/CybOX world into Mantis Actionables,
+    we also import the tagging information. An import into the SingletonObservable
+    table of Mantis Actionables is associated with a fact in the Dingos world.
+    For example, the fact ``AddressValue=127.0.0.1`` within a  CybOX address
+    object gives rise to a SingletonObservable ``IP/v4/127.0.0.1``; the association
+    with the fact in Dingos is maintained via the Source object attached
+    to the SingletonObservable.
+
+    To have as complete information as possible,
+    we try to also import the history information associated with the tag in Dingos
+    into the history information for the tag created/deleted in Mantis Actionables.
+    This is what this function helps us with.
+
+    The function takes the following information:
+
+    - action_flag: see mantis_actionables.models.ActionableTagHistory.ADD/REMOVE
+
+    - user (optional): If we know, which user has added the tags we are interested
+      into, we can additionally provide this information; ``user`` can be ``None``.
+
+    - dingos_tag_name: the name of the dingos tag (which corresponds to a tag context
+      in Mantis Actionables)
+
+    - fact_pks: the primary keys of the facts for which we want to extract
+      history information about Dingos tags associated with the facts.
+
+    The function filters the Dingos tag history for fitting dingos tag history items;
     if we find a likely item, we take the associated comment (and user, if this function was
     called without user information).
+
+    The function returns a pair ``(user,comment)``, where ``comment`` is the
+    entry found in the Dingos tag history (possibly with additional information that
+    the comment was derived from the Dingos tag history.)
     """
+
     fact_content_type = ContentType.objects.get_for_model(Fact)
+
     just_now = timezone.now() - timedelta(milliseconds=2500)
 
     comment = ''
@@ -148,6 +160,37 @@ def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name
 
 
 def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_singleton_pks,user=None,comment=''):
+    """
+    Transfer additions/deletions of tags within Mantis Actionables into Dingos (i.e., the STIX/CybOX world)
+
+    Tags may be associated with "things" in Django Dingos (i.e., the STIX/CybOX) world.
+
+    When importing information from the STIX/CybOX world into Mantis Actionables,
+    we also import the tagging information. An import into the SingletonObservable
+    table of Mantis Actionables is associated with a fact in the Dingos world.
+    For example, the fact ``AddressValue=127.0.0.1`` within a  CybOX address
+    object gives rise to a SingletonObservable ``IP/v4/127.0.0.1``; the association
+    with the fact in Dingos is maintained via the Source object attached
+    to the SingletonObservable.
+
+    When adding/deleting a tag on an SingletonObservable, we want to transfer changes
+    to the fact(s) in Dingos (i.e., the STIX/CybOX world) that are associated with
+    the SingletonObservable. This is achieved via this function.
+
+    The function takes the following arguments:
+
+    - action: 'add' or 'remove'
+    - context_name_set: a tag in Mantis Actionables always has a context; it is this
+      context that is communicated between Mantis Actionables and Dingos
+    - affected_singleton_pks: set/list of primary keys of singleton observables on which
+      the action was carried out
+
+    - user (required): information about user who carried out the task (will be used in
+      tagging history in Dingos)
+
+    - comment (optional): will be used in tagging history in Dingos.
+
+    """
 
     if not user:
         logger.critical("No user provided when trying to transfer tags %s from actionables to dingos" % context_name_set)
@@ -156,10 +199,11 @@ def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_
     affected_singletons = SingletonObservable.objects.filter(id__in=affected_singleton_pks)
 
     affected_fact_ids = set(SingletonObservable.objects.filter(id__in=affected_singleton_pks).values_list('sources__iobject_fact',flat=True))
-    #found_contexts = set(SingletonObservable.objects.all().values_list('actionable_tags__actionable_tag__context__name',flat=True))
 
     affected_facts = Fact.objects.filter(pk__in=affected_fact_ids)
 
+
+    # First, we fix the the tags in the Dingos world
     for affected_fact in affected_facts:
         existing_tags = set(affected_fact.tags.all())
         if action == 'add':
@@ -170,6 +214,10 @@ def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_
             affected_fact.tags.remove(*context_name_set)
 
         TaggingHistory.bulk_create_tagging_history(action,changed_tags,[affected_fact],user,comment)
+
+
+    # In order to support fast querying of all dingos tags associated with a SingletonObservable,
+    # we maintain a list of these tags in the SingletonObservable -- that also has to be updated.
 
     for singleton in affected_singletons:
         if singleton.mantis_tags:
@@ -186,13 +234,25 @@ def update_and_transfer_tag_action_to_dingos(action, context_name_set, affected_
         singleton.mantis_tags= updated_tag_info
         singleton.save()
 
-
-
-
-
 def update_and_transfer_tags(fact_pks,user=None):
 
     """
+    Transfer Dingos tags into Mantis Actionables.
+
+    Tags may be associated with "things" in Django Dingos (i.e., the STIX/CybOX) world.
+
+    When importing information from the STIX/CybOX world into Mantis Actionables,
+    we also import the tagging information. An import into the SingletonObservable
+    table of Mantis Actionables is associated with a fact in the Dingos world.
+    For example, the fact ``AddressValue=127.0.0.1`` within a  CybOX address
+    object gives rise to a SingletonObservable ``IP/v4/127.0.0.1``; the association
+    with the fact in Dingos is maintained via the Source object attached
+    to the SingletonObservable.
+
+    As a last step after importing into Mantis Actionables from Dingos,
+    we recalculate the tagging information for all Dingos facts that
+    occured in the import.
+
     Given a list or set of fact primary keys, the function does the following:
 
     - It gathers all the SingletonObjects that have a source in which a fact
@@ -258,14 +318,14 @@ def update_and_transfer_tags(fact_pks,user=None):
     # singleton observables
 
     for singleton in affected_singletons:
-        logger.debug("Treating singleton observable %s" % singleton)
+        logger.debug("Transfer of tags: treating singleton observable with pk %s" % singleton.pk)
         # Determine the facts associated with this singleton
         fact_ids = set(map(lambda x: x.iobject_fact_id, singleton.sources.all()))
 
         # Use the fact2tag_map to determine all mantis tags associated with the
         # singleton
 
-        logger.debug("Found the following fact ids: %s" % fact_ids)
+        logger.debug("Found the following fact ids associated with the singleton: %s" % fact_ids)
 
         found_tags = set(chain(*map(lambda x: fact2tag_map.get(x,[]),fact_ids)))
 
@@ -333,7 +393,7 @@ def update_and_transfer_tags(fact_pks,user=None):
                                               supress_transfer_to_dingos= True)
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
-                    logger.debug("Found special tag %s" % tag)
+                    logger.debug("Found context tag %s" % tag)
                     (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.REMOVE,
                                                                                         user,
                                                                                         tag,
@@ -352,10 +412,29 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                     tags_to_add = None,
                                                     tagging_comment = ""):
     """
+    Import basic indicators contained in STIX reports into Mantis Actionables
+
+    The function takes the following parameters:
+
+    - top_level_iobjs: Dingos InfoObjects (or their primary keys; both work)
+      that represent the top-level objects representing a report from which
+      the import into MantisActionables is to occur.
+
+    - action_comment: Comment that will be written into the Action object
+      associated with the import
+
+    - tags_to_add: List of context names with which each imported SingletonObservable
+      (and the fact from which the SingletonObject was derived) should be tagged
+
+    - tagging_comment: Comment that should be used for tagging history (in case
+      ``tags_to_add`` contains context names.)
+
     The function carries out the following actions:
 
     - For each object passed to the function, it determines the
-      downward reachability graph and then carries out the
+      downward reachability graph
+
+    - It then carries out the
       the imports specified in ACTIVE_MANTIS_EXPORTERS as specified in ``__init__.py``
       on these graphs.
 
@@ -370,18 +449,40 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
       be imported into mantis_actionables, a single exporter result must
       yield the following keys::
 
+            {
+             # The indicator (type, subtype, and value)
+              'actionable_info': u'from@example.com',
+              'actionable_subtype': 'sender',
+              'actionable_type': 'Email_Address',
+
+              # Information about fact from which the indicator was derived
+
+              '_fact_pk': 178,
+              '_value_pk': 108,
+              '_io2fv': <vIO2FValue: vIO2FValue object>,
+
+              # Information about the containing object
+
+              '_identifier_pk': 32,
+
+              '_iobject_pk': 40,
+
+
+              # Contextual information contained in reachable nodes.
+              # Currently, the exporter extracts the following information:
+              # - node of indicator object from which the object is reachable;
+              #   kill-chain nodes referenced by the indicator are included
+              # - campaign nodes reachable via the indicator
+              # - threat actor nodes reachable via the indicator
+
+              '_relationship_info': [ List of networkx-nodes]
+            }
+
+
+
     """
 
-    # We leave the skip terms away since we are going in down direction,
-    # so the danger that we pull in lot's of stuff we do not want
-    # is lower
-
-    #skip_terms = [{'term':'Related','operator':'icontains'}]
-
-
-    skip_terms = []
-
-
+    # Retrieve the primary keys of the top-level objects
     if top_level_iobjs:
         if isinstance(top_level_iobjs[0],InfoObject):
             top_level_iobj_pks = map(lambda x:x.pk, top_level_iobjs)
@@ -391,23 +492,38 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
     else:
         top_level_iobj_pks = []
 
+
+    # Create an action with which this import will be associated
+
     action, created_action = Action.objects.get_or_create(user=user,comment=action_comment)
 
+    # Variable for collecting results
     results_per_top_level_obj = []
 
     for top_level_iobj_pk in top_level_iobj_pks:
+
+        # Generate downwards reachability graph
         graph= follow_references([top_level_iobj_pk],
-                                 skip_terms = skip_terms,
+                                 skip_terms = [],
                                  direction='down'
                                  )
+
+        # Extract pk of the identifier of the top-level iobject
+
         top_level_iobj_identifier_pk = graph.node[top_level_iobj_pk]['identifier_pk']
 
 
         postprocessor=None
 
+        # variable for storing results for this top-level object
         results = []
 
-        details_obj = None
+
+        # We reuse the postprocessor object; thus we
+        # have to do certain processing carried out
+        # in the object (e.g., enrichment of the graph) only once
+
+        postprocessor_obj = None
 
         for exporter in MANTIS_ACTIONABLES_ACTIVE_EXPORTERS:
 
@@ -422,29 +538,41 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                     # already been pulled from the database
                                                     # rather than pulling it again for
                                                     # each iteration.
-                                                    details_obj = details_obj
+                                                    details_obj = postprocessor_obj
                                                     )
 
-                details_obj = postprocessor
+                postprocessor_obj = postprocessor
 
                 (content_type,part_results) = postprocessor.export(override_columns='EXPORTER', format='exporter')
 
                 results += part_results
 
-        # If tags_to_add is set, the user wants us to add dingos tags to the facts before proceeding
+        # If tags_to_add is set, the user wants us to add dingos tags to both the SingletonObjects and
+        # the facts (in Dingos) from which they were derived.
+        #
+        # We achieve this by tagging the facts *now* -- the latter import steps will take care
+        # to transfer these tags also to the SingletonObjects.
+
+        # Extract the primary keys of all facts from the export results
 
         fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
 
-        print "Found facts %s" % fact_pks
+        logger.debug("Found fact pks %s" % fact_pks)
+
         facts_to_tag = Fact.objects.filter(pk__in=fact_pks)
+
         for fact in facts_to_tag:
-            print "Adding tags %s" % tags_to_add
+            logger.debug("Adding tags %s" % tags_to_add)
             fact.tags.add(*tags_to_add)
+        # Write the history.
         TaggingHistory.bulk_create_tagging_history('add',
                                                    tags_to_add,
                                                    facts_to_tag,
                                                    user,
                                                    tagging_comment)
+
+        # Carry on with importing the SingletonObservables from the results
+        # for the given top level object.
 
         import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
                                                         top_level_iobj_pk,
@@ -452,34 +580,56 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
                                                         user=user,
                                                         graph=graph)
 
-
-
-
-def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,top_level_iobj_pk,results,
+def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk,
+                                                    top_level_iobj_pk,
+                                                    results,
                                                     action=None,
                                                     user=None,
                                                     graph=None,
                                                     ):
     """
-    The function takes the primary key of an InfoObject representing a top-level STIX object
-    and a list of results that have the following shape::
+    Import basic indicators found in a STIX-Report/Package into Mantis Actionables
 
-        {
+    The function takes the following arguments:
 
-         (...)
+    - top_level_iobj_identifier_pk: Primary key of the identifier of the STIX report object
+    - top_level_iobj_pk: Primary key of the InfoObject representing the STIX report object
+    - Results: A list of dictionaries containing at least the following information::
 
-         "actionable_type": <e.g., 'Hash'>
-         "actionable_subtype": <e.g., 'MD5', can be empty for other types>
-         "actionable_info": <basic information, e.g., hash value>
+         {
+             # The indicator (type, subtype, and value)
+              'actionable_info': u'from@example.com',
+              'actionable_subtype': 'sender',
+              'actionable_type': 'Email_Address',
 
-         (...)
+              # Information about fact from which the indicator was derived
 
-         "object.pk": <pk of information object in which fact was found from
-                       which the actionable info has been derived>
-         "fact.pk": <pk of fact from which actionable info was derived>
-         "value.pk": <pk of value from which actionable info was derived>
+              '_fact_pk': 178,
+              '_value_pk': 108,
+              '_io2fv': <vIO2FValue: vIO2FValue object>,
 
-        },
+              # Information about the containing object
+
+              '_identifier_pk': 32,
+
+              '_iobject_pk': 40,
+
+
+              # Contextual information contained in reachable nodes.
+              # Currently, the exporter extracts the following information:
+              # - node of indicator object from which the object is reachable;
+              #   kill-chain nodes referenced by the indicator are included
+              # - campaign nodes reachable via the indicator
+              # - threat actor nodes reachable via the indicator
+
+              '_relationship_info': [ List of networkx-nodes]
+          }
+
+    - action: Action object with which this import is to be associated
+    - user: User carrying out the import (can be None)
+    - graph: networkx-Graph from which the results were derived. If no
+      graph is supplied, then one is generated as downward reachability graph
+
 
     - The function extracts the set of all 'object.pk's. It then queries MANTIS for all
       facts in marking objects that are associated as markings with one of these objects
@@ -501,16 +651,6 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
     """
 
-    # Mapping from fact ids to tags
-
-    fact2tag_map = {}
-
-    # Mapping information objects to TLP information
-
-    iobj2tlp_map = {}
-
-    # Mapping from identifier_pks to related_entities
-
     if not graph:
         graph = follow_references([top_level_iobj_pk],
                                   skip_terms = [],
@@ -519,19 +659,36 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         annotate_graph(graph)
 
+    # There is information which we can most efficiently retrieve
+    # by bulk queries to the database rather than item by item.
+    # We write the results of these queries into maps.
+
+    # Mapping information objects to TLP information
+
+    iobj2tlp_map = {}
+
+    # Mapping from identifier_pks to related_entities
 
     identifier_pk_2_related_entity_map = {}
+
+    # access graph node for top-level object
 
     top_level_node = graph.node[top_level_iobj_pk]
 
     logger.info("Treating %s:%s" % (top_level_node['identifier_ns'],top_level_node['identifier_uid']))
 
+    # If no action object was provided, create one
     if not action:
         action, created_action = Action.objects.get_or_create(user=user,comment="Actionables Import")
 
+    # Determine TLP information for all information objects in the result
+
+    # Here we extract the pks of all information objects containing one of the basic indicators
+    # to be imported
 
     containing_iobj_pks = set(map(lambda x: x.get('_iobject_pk'), results))
 
+    # The TLP information is stored in markings
     select_columns = ['identifier_id','marking_thru__marking__fact_thru__fact__fact_values__value']
     color_qs = InfoObject.objects.filter(id__in=containing_iobj_pks)\
         .filter(marking_thru__marking__fact_thru__fact__fact_term__term='Marking_Structure',
@@ -542,6 +699,8 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         iobj2tlp_map[iobject_tlp_info[0]] = iobject_tlp_info[1].lower()
 
     for result in results:
+
+        # extract information from export result
 
         identifier_pk = int(result['_identifier_pk'])
         iobject_pk = int(result['_iobject_pk'])
@@ -558,10 +717,9 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         value = result.get('actionable_info','')
 
         if not (type and value):
-            logger.error("Incomplete actionable information %s/%s for value %s in "
+            logger.error("Incomplete actionable information %s/%s in "
                          "top-level pk %s (object pk %s)" % (type,
                                                              subtype,
-                                                             value,
                                                              top_level_iobj_pk,
                                                              iobject_pk))
             continue
@@ -572,9 +730,6 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         origin_info = src_meta_data.get('origin',Source.ORIGIN_UNKNOWN)
         processing_info = src_meta_data.get('processing',Source.PROCESSING_UNKNOWN)
-
-
-
 
         singleton_type_obj = SingletonObservableType.cached_objects.get_or_create(name=type)[0]
         singleton_subtype_obj = SingletonObservableSubtype.cached_objects.get_or_create(name=subtype)[0]
@@ -646,9 +801,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
 
         source.related_stix_entities.add(*entities)
 
-
-
-        tlp_color = tlp_color_map.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
+        tlp_color = Source.TLP_RMAP.get(iobj2tlp_map.get(identifier_pk,None),Source.TLP_UNKOWN)
         if not source.tlp == tlp_color:
             source.tlp = tlp_color
             source.save()
