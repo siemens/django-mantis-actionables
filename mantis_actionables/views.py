@@ -461,7 +461,7 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
 
 class DashboardDataProvider(BasicTableDataProvider):
-    view_name = "latest_external_reports"
+    view_name = "dashboard"
 
     table_spec = {}
 
@@ -642,13 +642,14 @@ class DashboardDataProvider(BasicTableDataProvider):
         table_spec = self.table_spec[table_name]
         offset = table_spec['offset']
 
-        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
-            # gather all info object ids and namespaces
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
             id2colors = self.get_id_tlp_mapping(offset+0, q)
-            #namespace_ids = set()
-            #for row in q:
-            #    namespace_ids.add(row[offset+1])
 
+
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
 
@@ -658,13 +659,11 @@ class DashboardDataProvider(BasicTableDataProvider):
                 elif table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
                     row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':_row[offset+0]}), _row[2])
 
-
                 # tlp color
                 row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
 
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
-            id2colors = self.get_id_tlp_mapping(offset+0, q)
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
                 # the report name links to the investigation/incident context page, the symbol to the infoobject
