@@ -492,7 +492,7 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
 
 class DashboardDataProvider(BasicTableDataProvider):
-    view_name = "latest_external_reports"
+    view_name = "dashboard"
 
     table_spec = {}
 
@@ -520,6 +520,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY' : [
             ('', 'TLP', '0'), #0
+            ('', 'Tags', '0'), #1
         ]
     }
 
@@ -546,6 +547,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY' : [
             #('', 'TLP', '0'), #0
+            ('', 'Tags', '0'), #0
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for filtering/managing Bulk imports.' % "/mantis/actionables/import_info")
@@ -574,6 +576,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
+            ('', 'Tags', '0'), #2
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
@@ -603,6 +606,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
+            ('', 'Tags', '0'), #2
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
@@ -672,33 +676,58 @@ class DashboardDataProvider(BasicTableDataProvider):
         # end TLP
         return id2colors
 
+    # column_name specifies how we query the tag name, object type is ImportInfo or InfoObject
+    def get_id_tag_mapping(self, row_col, column_name, object_type, q):
+        iobject_ids = set()
+        for row in q:
+            iobject_ids.add(row[row_col])
+
+        select_columns = ['id', column_name]
+        id2tags = object_type.objects.filter(id__in=iobject_ids).values_list(*select_columns)
+        id2tags_dict = {}
+        for id, tag in id2tags:
+            if tag is not None:
+                tag_link = "<a href='%s'>%s</a>" % (reverse('actionables_context_view',kwargs={'context_name': tag}), tag)
+                try:
+                    id2tags_dict[id].append(tag_link)
+                except KeyError:
+                    id2tags_dict[id] = [tag_link]
+
+        return id2tags_dict
+
     def postprocess(self,table_name,res,q):
         table_spec = self.table_spec[table_name]
         offset = table_spec['offset']
 
-        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
-            # gather all info object ids and namespaces
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
+            id2tags = self.get_id_tag_mapping(offset+0, 'identifier__tags__name', InfoObject, q)
             id2colors = self.get_id_tlp_mapping(offset+0, q)
-            #namespace_ids = set()
-            #for row in q:
-            #    namespace_ids.add(row[offset+1])
 
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+            id2tags = self.get_id_tag_mapping(offset+0, 'actionable_tags__actionable_tag__context__name', ImportInfo, q)
+            id2colors = self.get_id_tlp_mapping(offset+0, q)
+
+
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
 
                 # link to report
                 if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS):
                     row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[2])
+                    # tlp color
+                    row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
+                    # tags
+                    row[offset+1] = ", ".join(id2tags.get(int(_row[offset+0]), []))
                 elif table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+                    # tags
+                    row[offset+0] = ", ".join(id2tags.get(int(_row[offset+0]), []))
                     row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':_row[offset+0]}), _row[2])
-
-
-                # tlp color
-                row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
 
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
-            id2colors = self.get_id_tlp_mapping(offset+0, q)
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
                 # the report name links to the investigation/incident context page, the symbol to the infoobject
@@ -710,6 +739,8 @@ class DashboardDataProvider(BasicTableDataProvider):
                 # get the creation timestamp of this identifier and limit results to 1 result
                 row[offset+0] = InfoObject.objects.filter(identifier__id=int(_row[offset+2])).order_by('timestamp').values_list('timestamp')[0]
                 row[offset+1] = id2colors.get(int(_row[offset+0]), 0)
+                row[offset+2] = ", ".join(id2tags.get(int(_row[offset+0]), []))
+
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS) or table_name == table_name_slug(self.TABLE_NAME_CURRENT_THREAT_ACTORS):
 
