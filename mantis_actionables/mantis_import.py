@@ -483,7 +483,7 @@ def import_singleton_observables_from_STIX_iobjects(top_level_iobjs, user = None
     """
 
     if not tags_to_add:
-        tags_to_add=None
+        tags_to_add=[]
 
     # Retrieve the primary keys of the top-level objects
     if top_level_iobjs:
