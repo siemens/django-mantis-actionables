@@ -759,6 +759,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
             source.top_level_iobject_id = top_level_iobj_pk
             source.processing = processing_info
             source.origin = origin_info
+            source.save()
         else:
             logger.debug("Created new source object")
 
