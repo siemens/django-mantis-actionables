@@ -9,46 +9,26 @@ tags_infos_to_transfer = None
 
 def extract_tag_infos_forward(apps, schema_editor):
     global tags_infos_to_transfer
-    global existing_tags
-    ActionableTag = apps.get_model("mantis_actionables","ActionableTag")
 
-    existing_tags = list(ActionableTag.objects.values('tag__name','tag_id','context_id','context__name','id'))
     ActionableTag2X = apps.get_model("mantis_actionables","ActionableTag2X")
-    tags_infos_to_transfer = list(ActionableTag2X.objects.values('actionable_tag__tag__name','actionable_tag__context_id','content_type_id','object_id','actionable_tag_id'))
+    tags_infos_to_transfer = list(ActionableTag2X.objects.values('content_type_id','object_id','actionable_tag_id'))
 
 
 def save_tags_forward(apps, schema_editor):
     global tags_infos_to_transfer
-    global existing_tags
-
-    tag_id_mapping = {}
-
-    for tag_info in existing_tags:
-        atag, created = ActionableTag.objects.get_or_create(context_id=tag_info['context_id'],
-                                                            info_id=tag_info['tag_id'])
-        tag_id_mapping[tag_info['id']] = atag.id
-
 
     for tag_info in tags_infos_to_transfer:
-        atag = ActionableTag.objects.get(context_id=tag_info['actionable_tag__context_id'],
-                                         name=tag_info['actionable_tag__tag__name'])
-
-        tagged_actionable_item, created = TaggedActionableItem.objects.get_or_create(tag=atag,
+        tagged_actionable_item, created = TaggedActionableItem.objects.get_or_create(tag_id=tag_info['actionable_tag_id'],
                                                                             content_type_id=tag_info['content_type_id'],
                                                                             object_id=tag_info['object_id'])
 
-
-    #Update tag info in TaggingHistory
-    for entry in ActionableTaggingHistory.objects.all():
-        entry.tag_id = tag_id_mapping[entry.tag_id]
-        entry.save(update_fields=['tag_id'])
-
-    #delete old actionable tags
-    ActionableTag.objects.filter(name="to-delete").delete()
-
+    #call save for each ActionableTag in order to fill the name and slug field with unique values
+    for atag in ActionableTag.objects.all():
+        atag.save()
 
 
 class Migration(migrations.Migration):
+
     dependencies = [
         ('contenttypes', '0001_initial'),
         ('mantis_actionables', '0027_context_changes'),
@@ -58,10 +38,6 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             extract_tag_infos_forward,
             lambda x,y : None
-        ),
-        migrations.RenameModel(
-            old_name='tagname',
-            new_name='TagInfo',
         ),
         migrations.CreateModel(
             name='TaggedActionableItem',
@@ -77,10 +53,14 @@ class Migration(migrations.Migration):
             },
             bases=(models.Model,),
         ),
-        #migrations.AlterUniqueTogether(
-        #    name='actionabletag2x',
-        #    unique_together=None,
-        #),
+        migrations.RenameModel(
+            old_name='TagName',
+            new_name='TagInfo',
+        ),
+        migrations.AlterUniqueTogether(
+            name='actionabletag2x',
+            unique_together=None,
+        ),
         migrations.RemoveField(
             model_name='actionabletag2x',
             name='actionable_tag',
@@ -96,22 +76,22 @@ class Migration(migrations.Migration):
             name='actionabletag',
             options={'verbose_name': 'ActionableTag', 'verbose_name_plural': 'ActionableTags'},
         ),
+        migrations.RenameField(
+            model_name='actionabletag',
+            old_name='tag',
+            new_name='info',
+        ),
         migrations.AddField(
             model_name='actionabletag',
             name='name',
-            field=models.CharField(default='to-delete', unique=False, max_length=100, verbose_name='Name'),
+            field=models.CharField(default='fill-in', unique=False, max_length=100, verbose_name='Name'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='actionabletag',
             name='slug',
-            field=models.SlugField(default='to-delete', unique=False, max_length=100, verbose_name='Slug'),
+            field=models.SlugField(default='fill-in', unique=False, max_length=100, verbose_name='Slug'),
             preserve_default=False,
-        ),
-        migrations.AddField(
-            model_name='actionabletag',
-            name='info',
-            field=models.ForeignKey(null=True,to='mantis_actionables.TagInfo')
         ),
         migrations.AddField(
             model_name='importinfo',
@@ -127,15 +107,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='actionabletag',
-            unique_together=None,
-        ),
-        migrations.RemoveField(
-            model_name='actionabletag',
-            name='tag',
+            unique_together=set([('context', 'info')]),
         ),
         migrations.RunPython(
             save_tags_forward,
             lambda x,y : None
         ),
-
     ]
+

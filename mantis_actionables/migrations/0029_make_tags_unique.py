@@ -9,10 +9,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterUniqueTogether(
-            name='actionabletag',
-            unique_together=set([('context', 'info')]),
-        ),
         migrations.AlterField(
             model_name='actionabletag',
             name='name',
@@ -22,10 +18,5 @@ class Migration(migrations.Migration):
             model_name='actionabletag',
             name='slug',
             field=models.SlugField(unique=True, max_length=100, verbose_name='Slug'),
-        ),
-        migrations.AlterField(
-            model_name='actionabletag',
-            name='info',
-            field=models.ForeignKey(null=False,to='mantis_actionables.TagInfo')
         )
         ]

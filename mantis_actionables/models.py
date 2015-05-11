@@ -155,8 +155,9 @@ class ActionableTag(TagBase):
         return "%s:%s" % (self.context.name,self.info.name)
 
     def save(self, *args, **kwargs):
-        if not self.pk and not self.name:
+        if not self.name or self.name == 'fill-in':
             self.name = self.unique_id()
+            self.slug = self.slugify(self.name)
         return super(ActionableTag, self).save(*args, **kwargs)
 
     @classmethod
