@@ -116,16 +116,31 @@ class CachingManager(models.Manager):
             (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
 
 
-#TODO manager method
 class ActionableTaggableManager(_TaggableManager):
 
     @require_instance_manager
     def add(self, *tags):
-        raise Exception("add called")
+        tag_objs = set()
+        tag_pks = set()
+        for t in tags:
+            if isinstance(t, self.through.tag_model()):
+                tag_objs.add(t)
+            elif isinstance(t, int):
+                tag_pks.add(t)
+            else:
+                raise ValueError("Cannot add {0} ({1}). Expected {2} or int.".format(
+                    t, type(t), type(self.through.tag_model())))
+
+        for tag in tag_objs:
+            self.through.objects.get_or_create(tag=tag, **self._lookup_kwargs())
+        for tag_pk in tag_pks:
+            self.through.objects.get_or_create(tag_id=tag_pk, **self._lookup_kwargs())
 
     @require_instance_manager
     def remove(self, *tags):
-        raise Exception("remove called")
+        tag_pks = [x.id if isinstance(x,self.through.tag_model()) else x for x in tags]
+        self.through.objects.filter(**self._lookup_kwargs()).filter(
+            tag_id__in=tag_pks).delete()
 
 
 class TagInfo(models.Model):
