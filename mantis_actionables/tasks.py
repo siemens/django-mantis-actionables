@@ -20,9 +20,7 @@ from __future__ import absolute_import
 
 import logging
 
-#TODO delete debug flag
-from celery import shared_task, current_app
-current_app.conf.CELERY_ALWAYS_EAGER = True
+from celery import shared_task
 
 from mantis_actionables.core import crowdstrike
 
