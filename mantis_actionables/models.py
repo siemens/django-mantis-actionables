@@ -34,7 +34,8 @@ from django.utils import timezone
 from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace, Identifier
 
 from taggit.models import TagBase, GenericTaggedItemBase
-from taggit.managers import TaggableManager
+from taggit.managers import TaggableManager, _TaggableManager
+from taggit.utils import require_instance_manager
 from django.utils.translation import ugettext_lazy as _
 
 logger = logging.getLogger(__name__)
@@ -79,8 +80,9 @@ class CachingManager(models.Manager):
         "SingletonObservableType" : ['name'],
         "SingletonObservableSubtype" : ['name'],
         "Context" : ["name"],
+        "TagInfo" : ['name'],
         "EntityType" : ["name"],
-        "ActionableTag" : ["context_id","name"]
+        "ActionableTag" : ["context_id","info_id"]
     }
 
     def get_or_create(self, defaults=None, **kwargs):
@@ -114,9 +116,23 @@ class CachingManager(models.Manager):
             (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
 
 
+#TODO manager method
+class ActionableTaggableManager(_TaggableManager):
+
+    @require_instance_manager
+    def add(self, *tags):
+        raise Exception("add called")
+
+    @require_instance_manager
+    def remove(self, *tags):
+        raise Exception("remove called")
+
+
 class ActionableTag(TagBase):
     context = models.ForeignKey('Context',
                                 null=True)
+    #TODO null=True needed?
+    info = models.ForeignKey('TagInfo')
 
     objects = models.Manager()
     cached_objects = CachingManager()
@@ -124,8 +140,15 @@ class ActionableTag(TagBase):
     class Meta:
         verbose_name = _("ActionableTag")
         verbose_name_plural = _("ActionableTags")
-        unique_together=('context','name')
+        unique_together=('context','info')
 
+    def unique_id(self):
+        return "%s:%s" % (self.context.name,self.info.name)
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.name:
+            self.name = self.unique_id()
+        return super(ActionableTag, self).save(*args, **kwargs)
 
     @classmethod
     def bulk_action(cls,
@@ -175,7 +198,9 @@ class ActionableTag(TagBase):
 
             context_name_set.add(context_name)
 
-            actionable_tag, created = ActionableTag.cached_objects.get_or_create(name=tag_name,
+            tag_info, created = TagInfo.cached_objects.get_or_create(name=tag_name)
+
+            actionable_tag, created = ActionableTag.cached_objects.get_or_create(info_id=tag_info.id,
                                                                                  context_id=context.id)
 
             actionable_tag_list.append(actionable_tag)
@@ -238,10 +263,11 @@ class ActionableTag(TagBase):
 
         if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
             singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks)
+            #TODO change here to use "unique" identifier?
             for singleton in singletons:
                 actionable_tag_set = set(map(lambda x: "%s:%s" % (x[1],
                                                                   x[0]),
-                                             singleton.actionable_tags.values_list('name','context__name')))
+                                             singleton.actionable_tags.values_list('info__name','context__name')))
                 actionable_tag_list_repr = list(actionable_tag_set)
                 actionable_tag_list_repr.sort()
 
@@ -599,7 +625,7 @@ class SingletonObservable(models.Model):
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
-    actionable_tags = TaggableManager(through=TaggedActionableItem)
+    actionable_tags = TaggableManager(through=TaggedActionableItem,manager=ActionableTaggableManager)
 
     mantis_tags = models.TextField(blank=True,default='')
 
@@ -740,7 +766,7 @@ class ImportInfo(models.Model):
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
-    actionable_tags = TaggableManager(through=TaggedActionableItem)
+    actionable_tags = TaggableManager(through=TaggedActionableItem,manager=ActionableTaggableManager)
 
     related_stix_entities = models.ManyToManyField(STIX_Entity)
 
@@ -781,6 +807,14 @@ class Context(models.Model):
         from django.core.urlresolvers import reverse
         return reverse('actionables_context_view', args=[self.name])
 
+
+class TagInfo(models.Model):
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    def __unicode__(self):
+        return "%s" % (self.name)
 
 
 class ActionableTaggingHistory(models.Model):

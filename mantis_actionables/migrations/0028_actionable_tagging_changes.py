@@ -12,7 +12,7 @@ def extract_tag_infos_forward(apps, schema_editor):
     global existing_tags
     ActionableTag = apps.get_model("mantis_actionables","ActionableTag")
 
-    existing_tags = list(ActionableTag.objects.values('tag__name','context_id','id'))
+    existing_tags = list(ActionableTag.objects.values('tag__name','tag_id','context_id','context__name','id'))
     ActionableTag2X = apps.get_model("mantis_actionables","ActionableTag2X")
     tags_infos_to_transfer = list(ActionableTag2X.objects.values('actionable_tag__tag__name','actionable_tag__context_id','content_type_id','object_id','actionable_tag_id'))
 
@@ -25,7 +25,7 @@ def save_tags_forward(apps, schema_editor):
 
     for tag_info in existing_tags:
         atag, created = ActionableTag.objects.get_or_create(context_id=tag_info['context_id'],
-                                                            name=tag_info['tag__name'])
+                                                            info_id=tag_info['tag_id'])
         tag_id_mapping[tag_info['id']] = atag.id
 
 
@@ -105,7 +105,11 @@ class Migration(migrations.Migration):
             field=models.SlugField(default='to-delete', unique=False, max_length=100, verbose_name='Slug'),
             preserve_default=False,
         ),
-
+        migrations.AddField(
+            model_name='actionabletag',
+            name='info',
+            field=models.ForeignKey(null=True,to='mantis_actionables.TagInfo')
+        ),
         migrations.AddField(
             model_name='importinfo',
             name='actionable_tags',
@@ -114,7 +118,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='singletonobservable',
-            name='actionables_tags',
+            name='actionable_tags',
             field=taggit.managers.TaggableManager(to='mantis_actionables.ActionableTag', through='mantis_actionables.TaggedActionableItem', help_text='A comma-separated list of tags.', verbose_name='Tags'),
             preserve_default=True,
         ),
@@ -126,8 +130,9 @@ class Migration(migrations.Migration):
             model_name='actionabletag',
             name='tag',
         ),
-        migrations.DeleteModel(
-            name='TagName',
+        migrations.RenameModel(
+            old_name='tagname',
+            new_name='taginfo',
         ),
         migrations.RunPython(
             save_tags_forward,

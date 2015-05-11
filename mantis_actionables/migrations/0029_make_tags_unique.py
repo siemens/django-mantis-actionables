@@ -11,16 +11,21 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterUniqueTogether(
             name='actionabletag',
-            unique_together=set([('context', 'name')]),
+            unique_together=set([('context', 'info')]),
         ),
         migrations.AlterField(
-                    model_name='actionabletag',
-                    name='name',
-                    field=models.CharField(unique=True, max_length=100),
-                ),
-                migrations.AlterField(
-                    model_name='actionabletag',
-                    name='slug',
-                    field=models.SlugField(unique=True, max_length=100),
-                )
+            model_name='actionabletag',
+            name='name',
+            field=models.CharField(unique=True, max_length=100, verbose_name='Name'),
+        ),
+        migrations.AlterField(
+            model_name='actionabletag',
+            name='slug',
+            field=models.SlugField(unique=True, max_length=100, verbose_name='Slug'),
+        ),
+        migrations.AlterField(
+            model_name='actionabletag',
+            name='info',
+            field=models.ForeignKey(null=False,to='mantis_actionables.TagInfo')
+        )
         ]

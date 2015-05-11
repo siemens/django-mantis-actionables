@@ -50,7 +50,7 @@ from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X, TagInfo
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter, ExtendedSingletonObservablesFilter
 
 from .forms import ContextEditForm, BulkTaggingForm
@@ -871,7 +871,7 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
             self.object2tag_map = {}
             tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk',
                                                                              'actionable_tags__context__name',
-                                                                             'actionable_tags__name')
+                                                                             'actionable_tags__info__name')
             tag_map = {}
 
             for pk,context_name,tag_name in tag_infos:
@@ -1190,7 +1190,7 @@ class ActionablesContextView(BasicFilterView):
             # Compile tag info for SingletonObservables
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
-                                                     'actionable_tags__name')
+                                                     'actionable_tags__info__name')
 
             for pk,context_name,tag_name in tag_infos:
                 if context_name == self.curr_context_name:
@@ -1210,7 +1210,7 @@ class ActionablesContextView(BasicFilterView):
             import_info_pks = self.object_list.values_list('sources__import_info',flat=True)
 
             tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk','actionable_tags__context__name',
-                                                     'actionable_tags__name')
+                                                     'actionable_tags__info__name')
 
             # Prune results without tags (they are of form ``(pk,None,None)``)
 
@@ -1229,7 +1229,7 @@ class ActionablesContextView(BasicFilterView):
     def queryset(self):
         return SingletonObservable.objects.filter(actionable_tags__context__name=self.curr_context_name).select_related('type','subtype',
                                                                                            'actionable_tags__context__name',
-                                                                                           'actionable_tags__name').\
+                                                                                           'actionable_tags__info__name').\
             prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
@@ -1326,8 +1326,8 @@ class ActionablesTagHistoryView(BasicTemplateView):
     def get_context_data(self, **kwargs):
         context = super(ActionablesTagHistoryView, self).get_context_data(**kwargs)
 
-        cols_history = ['tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
-        sel_rel = ['tag','user','content_type']
+        cols_history = ['tag__info__name','timestamp','action','user__username','content_type_id','object_id','comment']
+        sel_rel = ['tag__info','user','content_type']
         history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
                          filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
                          filter(tag__context__name=self.tag_context).order_by('-timestamp').\
@@ -1406,7 +1406,7 @@ class ImportInfoList(BasicFilterView):
 
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
-                                                     'actionable_tags__name')
+                                                     'actionable_tags__info__name')
             for pk,context_name,tag_name in tag_infos:
                 if context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk)
@@ -1618,7 +1618,7 @@ class ImportInfoDetailsView(BasicFilterView):
 
             self.object2tag_map = {}
             tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
-                                                     'actionable_tags__name')
+                                                     'actionable_tags__info__name')
             for pk,context_name,tag_name in tag_infos:
                 if True: #context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk,context_name)
@@ -1711,7 +1711,7 @@ class ActionablesContextEditView(BasicDetailView):
 
                 # Rename actionable tags
 
-                ActionableTag.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
+                TagInfo.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
                 self.object.name = cleaned_data['new_context_name']
                 self.object.type = type
                 messages.success(request,"Context and associated tags renamed to '%s'" % cleaned_data['new_context_name'])
