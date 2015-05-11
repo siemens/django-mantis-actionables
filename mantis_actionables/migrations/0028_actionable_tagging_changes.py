@@ -33,7 +33,7 @@ def save_tags_forward(apps, schema_editor):
         atag = ActionableTag.objects.get(context_id=tag_info['actionable_tag__context_id'],
                                          name=tag_info['actionable_tag__tag__name'])
 
-        tagged_actionable_item = TaggedActionableItem.objects.get_or_create(tag=atag,
+        tagged_actionable_item, created = TaggedActionableItem.objects.get_or_create(tag=atag,
                                                                             content_type_id=tag_info['content_type_id'],
                                                                             object_id=tag_info['object_id'])
 
@@ -59,7 +59,10 @@ class Migration(migrations.Migration):
             extract_tag_infos_forward,
             lambda x,y : None
         ),
-
+        migrations.RenameModel(
+            old_name='tagname',
+            new_name='TagInfo',
+        ),
         migrations.CreateModel(
             name='TaggedActionableItem',
             fields=[
@@ -129,10 +132,6 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='actionabletag',
             name='tag',
-        ),
-        migrations.RenameModel(
-            old_name='tagname',
-            new_name='taginfo',
         ),
         migrations.RunPython(
             save_tags_forward,

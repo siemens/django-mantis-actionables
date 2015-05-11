@@ -128,11 +128,20 @@ class ActionableTaggableManager(_TaggableManager):
         raise Exception("remove called")
 
 
+class TagInfo(models.Model):
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    def __unicode__(self):
+        return "%s" % (self.name)
+
+
 class ActionableTag(TagBase):
     context = models.ForeignKey('Context',
                                 null=True)
-    #TODO null=True needed?
-    info = models.ForeignKey('TagInfo')
+
+    info = models.ForeignKey(TagInfo)
 
     objects = models.Manager()
     cached_objects = CachingManager()
@@ -263,12 +272,9 @@ class ActionableTag(TagBase):
 
         if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
             singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks)
-            #TODO change here to use "unique" identifier?
+
             for singleton in singletons:
-                actionable_tag_set = set(map(lambda x: "%s:%s" % (x[1],
-                                                                  x[0]),
-                                             singleton.actionable_tags.values_list('info__name','context__name')))
-                actionable_tag_list_repr = list(actionable_tag_set)
+                actionable_tag_list_repr = list(singleton.actionable_tags.names())
                 actionable_tag_list_repr.sort()
 
                 updated_tag_info = ",".join(actionable_tag_list_repr)
@@ -806,15 +812,6 @@ class Context(models.Model):
     def get_absolute_url(self):
         from django.core.urlresolvers import reverse
         return reverse('actionables_context_view', args=[self.name])
-
-
-class TagInfo(models.Model):
-    name = models.CharField(max_length=40,unique=True)
-    objects = models.Manager()
-    cached_objects = CachingManager()
-
-    def __unicode__(self):
-        return "%s" % (self.name)
 
 
 class ActionableTaggingHistory(models.Model):

@@ -1298,6 +1298,7 @@ class ActionablesContextView(BasicFilterView):
             context_name_pairs = map(lambda x : (cleaned_data['context'],x), tags)
             things_to_tag = map(lambda x: int(x), cleaned_data['checked_items'])
 
+            #TODO if things_to_tag
 
             ActionableTag.bulk_action(action = action,
                                           context_name_pairs=context_name_pairs,
