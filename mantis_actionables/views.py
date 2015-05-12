@@ -99,21 +99,35 @@ def datatable_query(post, **kwargs):
     display_cols = kwargs.pop('display_columns')
     config = kwargs.pop('query_config')
     
-    q = config['base'].objects
-    base_filters = config.get('filters',[])
-    base_excludes = config.get('excludes',[])
+    q = config['base'].objects.all()
+
+    query_modifiers = config.get('query_modifiers', [])
+
+    #base_filters = config.get('filters',[])
+    #base_excludes = config.get('excludes',[])
 
     count =config.get('count',True)
     cols = dict((x, y[0]) for x, y in cols.items())
 
     display_cols = dict((x, y[0]) for x, y in display_cols.items())
 
+    for query_modifier in query_modifiers:
+        mode,q_obj = query_modifier
+        if mode == 'filter':
+            q = q.filter(q_obj)
+            print "Filtering %s,%s" % query_modifier
+        elif mode == 'exclude':
+            q = q.exclude(q_obj)
+            print "Excluding %s,%s" % query_modifier
+        else:
+            raise ValueError("Please provide valid query modifier: %s is not valid." % mode)
     # extend query by kwargs['filter']
-    for filter in base_filters:
-        q = q.filter(**filter)
+    #for filter in base_filters:
+    #    q = q.filter(**filter)
 
-    for exclude in base_excludes:
-        q = q.exclude(**exclude)
+    #for exclude in base_excludes:
+    #    q = q.exclude(**exclude)
+    print q.query
 
     q = q.values_list(*(cols.values()))
     #sources__id for join on sources table
@@ -281,8 +295,9 @@ class BasicTableDataProvider(BasicJSONView):
                 query_config = cls.curr_cols.setdefault('query_config',{})
 
                 query_config['base'] = this_table_spec['model']
-                query_config['filters'] = this_table_spec.get('filters',[])
-                query_config['excludes'] = this_table_spec.get('excludes',[])
+                query_config['query_modifiers'] = this_table_spec.get('query_modifiers',[])
+                #query_config['filters'] = this_table_spec.get('filters',[])
+                #query_config['excludes'] = this_table_spec.get('excludes',[])
                 query_config['count'] = this_table_spec.get('count',True)
 
                 COLS_TO_QUERY = this_table_spec['COMMON_BASE'] + this_table_spec['QUERY_ONLY']
@@ -499,13 +514,11 @@ class DashboardDataProvider(BasicTableDataProvider):
     TABLE_NAME_LATEST_EXTERNAL_REPORTS = 'Latest Partner STIX Reports'
     TABLE_SPEC_LATEST_EXTERNAL_REPORTS = {
         'model' : InfoObject,
-        'filters': [{'iobject_type__name': 'STIX_Package'},
-                    {'latest_of__isnull': False},
-                    ],
-        'excludes': [
-                     #{'name__startswith': 'Analysis report'},
-                     {'identifier__namespace__uri__contains':'siemens'}
-                     ],
+        'query_modifiers' : [('filter',Q(iobject_type__name='STIX_Package',latest_of__isnull=False)),
+                             ('exclude',Q(identifier__namespace__uri__contains='siemens')),
+                             ('exclude', Q(name__startswith='Analysis report'))
+                             ],
+
         'count' : False,
         'COMMON_BASE' : [
             ('timestamp', 'Import Timestamp', '0'), #0
@@ -554,11 +567,12 @@ class DashboardDataProvider(BasicTableDataProvider):
     TABLE_NAME_LATEST_INVESTIGATIONS = 'Latest INVES Reports'
     TABLE_SPEC_LATEST_INVESTIGATIONS = {
         'model': InfoObject,
-        'filters': [{'iobject_type__name': 'STIX_Package'},
-                    {'latest_of__isnull': False},
-                    {'identifier__namespace__uri__contains':'siemens'},
-                    {'name__regex': r"(?:INVES-[0-9]+$)"}],
-        'excludes': [],
+        'query_modifiers' : [('filter',Q(iobject_type__name='STIX_Package',
+                                         latest_of__isnull=False,
+                                         identifier__namespace__uri__contains='siemens',
+                                         name__regex=r"(?:INVES-[0-9]+$)"))
+                             ],
+
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update Timestamp', '0'), #0
@@ -583,11 +597,11 @@ class DashboardDataProvider(BasicTableDataProvider):
     TABLE_NAME_LATEST_INCIDENTS_CREATED = 'Latest IR Reports'
     TABLE_SPEC_LATEST_INCIDENTS_CREATED = {
         'model': InfoObject,
-        'filters': [{'iobject_type__name': 'STIX_Package'},
-                    {'latest_of__isnull': False},
-                    {'identifier__namespace__uri__contains':'siemens'},
-                    {'name__regex': r"(?:IR-[0-9]+$)"}],
-        'excludes': [],
+        'query_modifiers' : [('filter',Q(iobject_type__name='STIX_Package',
+                                         latest_of__isnull=False,
+                                         identifier__namespace__uri__contains='siemens',
+                                         name__regex=r"(?:IR-[0-9]+$)"))],
+
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
@@ -611,10 +625,8 @@ class DashboardDataProvider(BasicTableDataProvider):
     TABLE_NAME_CURRENT_CAMPAIGNS = 'Latest Campaign STIX Objects'
     TABLE_SPEC_CURRENT_CAMPAIGNS = {
         'model': InfoObject,
-        'filters': [{'iobject_type__name': 'Campaign'},
-                    {'latest_of__isnull': False},
-                    ],
-        #'excludes': [],
+        'query_modifiers' : [('filter',Q(iobject_type__name='Campaign',latest_of__isnull=False))],
+
         'count': False,
         'COMMON_BASE': [
         ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
@@ -632,10 +644,10 @@ class DashboardDataProvider(BasicTableDataProvider):
     TABLE_NAME_CURRENT_THREAT_ACTORS = 'Latest Threat Actor STIX Objects'
     TABLE_SPEC_CURRENT_THREAT_ACTORS = {
         'model': InfoObject,
-        'filters': [{'iobject_type__name': 'ThreatActor'},
-                    {'latest_of__isnull': False},
-                    ],
-        #'excludes': [],
+         'query_modifiers' : [('filter',Q(iobject_type__name='ThreatActor')),
+                               ('filter', Q(latest_of__isnull=False))],
+
+
         'count': False,
         'COMMON_BASE': [
             ('identifier__latest__timestamp', 'Last Update TS', '0'), #0
@@ -687,6 +699,7 @@ class DashboardDataProvider(BasicTableDataProvider):
                 row = [my_escape(e) for e in list(_row)]
 
                 # link to report
+
                 if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS):
                     row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[2])
                 elif table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
@@ -701,6 +714,7 @@ class DashboardDataProvider(BasicTableDataProvider):
             id2colors = self.get_id_tlp_mapping(offset+0, q)
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
+
                 # the report name links to the investigation/incident context page, the symbol to the infoobject
                 row[1] = "<a href='%s'>%s</a> <a href='%s'><img src='/static/admin/img/selector-search.gif' alt='Lookup' height='16' width='16' /><a/>" % (
                     reverse('actionables_context_view',kwargs={'context_name':_row[1]}),
@@ -785,7 +799,8 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     DINGOS_VALUES_TABLE_SPEC = {
         'model' : vIO2FValue,
-        'filters' : [{'iobject__latest_of__isnull':False}],
+        'query_modifiers' : [('filter',Q(iobject__latest_of__isnull=False))],
+
         'count' : False,
         'COMMON_BASE' : [
                 ('iobject_identifier_uri','Namespace','0'),
@@ -809,7 +824,8 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
     INFOOBJECT_IDENTIFIER_UID_TABLE_SPEC = {
         'model' : Identifier,
-        'filters' : [{'latest__isnull':False}],
+        'query_modifiers' : [('filter',Q(latest__isnull=False))],
+
         'count': False,
         'COMMON_BASE' : [
                 ('namespace__uri','Namespace','0'),
@@ -911,9 +927,8 @@ class SingletonObservablesWithStatusOneTableDataProvider(BasicTableDataProvider)
 
     ALL_STATI_TABLE_SPEC = {
         'model' : SingletonObservable,
-        'filters' : [{
-                  'status_thru__active' : True
-                }],
+        'query_modifiers' : [('filter',Q(status_thru__active=True))],
+
         'count': False,
         'COMMON_BASE' : [
                 ('status_thru__timestamp','Status Timestamp','0')  , #0
