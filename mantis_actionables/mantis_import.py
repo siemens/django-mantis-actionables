@@ -32,7 +32,7 @@ from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.contrib.contenttypes.models import ContentType
 
-from django.db.models import Q
+from django.db.models import Q,F
 
 from dingos.models import InfoObject,Fact,TaggingHistory
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
@@ -938,3 +938,12 @@ def extract_essence(node_info, graph):
 
 
 
+def outdate_sources():
+    # find sources of STIX imports that are outdated, i.e.,
+    # the pointer to the top-level infoobject does not point to the most recent one of the given
+    # identifier.
+
+    outdated_sources = Source.objects.exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
+
+    for outdated_source in outdated_sources:
+        print (outdated_source,outdated_source.tags)

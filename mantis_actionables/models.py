@@ -355,6 +355,9 @@ class STIX_Entity(models.Model):
         unique_together = ('iobject_identifier','non_iobject_identifier')
 
 class Source(models.Model):
+
+    outdated = models.BooleanField(default=False)
+
     timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
     # If the source is MANTIS, we populate the following fields:
