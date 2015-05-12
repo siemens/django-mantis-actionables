@@ -50,7 +50,7 @@ from dingos.core.utilities import listify, set_dict
 from dingos.templatetags.dingos_tags import show_TagDisplay
 
 
-from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,TagName,ActionableTag2X,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X
+from .models import SingletonObservable,SingletonObservableType,Source,ActionableTag,ActionableTaggingHistory,Context,Status,ImportInfo,Status2X, TagInfo
 from .filter import ActionablesContextFilter, SingletonObservablesFilter, ImportInfoFilter, BulkInvestigationFilter, ExtendedSingletonObservablesFilter
 
 from .forms import ContextEditForm, BulkTaggingForm
@@ -505,7 +505,7 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
     table_spec[table_name_slug(TABLE_NAME_ALL_IMPORTS_F_CONTEXT)] = ALL_IMPORTS_TABLE_SPEC_F_CONTEXT
 
 class DashboardDataProvider(BasicTableDataProvider):
-    view_name = "latest_external_reports"
+    view_name = "dashboard"
 
     table_spec = {}
 
@@ -531,6 +531,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY' : [
             ('', 'TLP', '0'), #0
+            ('', 'Tags', '0'), #1
         ]
     }
 
@@ -557,6 +558,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         ],
         'DISPLAY_ONLY' : [
             #('', 'TLP', '0'), #0
+            ('', 'Tags', '0'), #0
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for filtering/managing Bulk imports.' % "/mantis/actionables/import_info")
@@ -586,6 +588,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
+            ('', 'Tags', '0'), #2
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
@@ -615,6 +618,7 @@ class DashboardDataProvider(BasicTableDataProvider):
         'DISPLAY_ONLY': [
             ('', 'Creation TS', '0'), #0
             ('', 'TLP', '0'), #1
+            ('', 'Tags', '0'), #2
         ],
         # TODO: below, we should use reverse, but there is an import problem -- need to make this a property-function somewhere
         'end_matter' : mark_safe('Click <a href="%s">here</a> for managing reports' % '/mantis/Authoring/History')
@@ -682,17 +686,41 @@ class DashboardDataProvider(BasicTableDataProvider):
         # end TLP
         return id2colors
 
+    # column_name specifies how we query the tag name, object type is ImportInfo or InfoObject
+    def get_id_tag_mapping(self, row_col, column_name, object_type, q):
+        iobject_ids = set()
+        for row in q:
+            iobject_ids.add(row[row_col])
+
+        select_columns = ['id', column_name]
+        id2tags = object_type.objects.filter(id__in=iobject_ids).values_list(*select_columns)
+        id2tags_dict = {}
+        for id, tag in id2tags:
+            if tag is not None:
+                tag_link = "<a href='%s'>%s</a>" % (reverse('actionables_context_view',kwargs={'context_name': tag}), tag)
+                try:
+                    id2tags_dict[id].append(tag_link)
+                except KeyError:
+                    id2tags_dict[id] = [tag_link]
+
+        return id2tags_dict
+
     def postprocess(self,table_name,res,q):
         table_spec = self.table_spec[table_name]
         offset = table_spec['offset']
 
-        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
-            # gather all info object ids and namespaces
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS)\
+                or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
+            id2tags = self.get_id_tag_mapping(offset+0, 'identifier__tags__name', InfoObject, q)
             id2colors = self.get_id_tlp_mapping(offset+0, q)
-            #namespace_ids = set()
-            #for row in q:
-            #    namespace_ids.add(row[offset+1])
 
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+            id2tags = self.get_id_tag_mapping(offset+0, 'actionable_tags__actionable_tag__context__name', ImportInfo, q)
+            id2colors = self.get_id_tlp_mapping(offset+0, q)
+
+
+        if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
 
@@ -700,16 +728,17 @@ class DashboardDataProvider(BasicTableDataProvider):
 
                 if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS):
                     row[2] = "<a href='%s'>%s</a>" % (reverse('url.dingos.view.infoobject',kwargs={'pk':_row[offset+0]}), _row[2])
+                    # tlp color
+                    row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
+                    # tags
+                    row[offset+1] = ", ".join(id2tags.get(int(_row[offset+0]), []))
                 elif table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
+                    # tags
+                    row[offset+0] = ", ".join(id2tags.get(int(_row[offset+0]), []))
                     row[2] = "<a href='%s'>%s</a>" % (reverse('actionables_import_info_details',kwargs={'pk':_row[offset+0]}), _row[2])
-
-
-                # tlp color
-                row[offset+0] = id2colors.get(int(_row[offset+0]), 0)
 
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_LATEST_INVESTIGATIONS) or table_name == table_name_slug(self.TABLE_NAME_LATEST_INCIDENTS_CREATED):
-            id2colors = self.get_id_tlp_mapping(offset+0, q)
             for _row in q:
                 row = [my_escape(e) for e in list(_row)]
 
@@ -722,6 +751,8 @@ class DashboardDataProvider(BasicTableDataProvider):
                 # get the creation timestamp of this identifier and limit results to 1 result
                 row[offset+0] = InfoObject.objects.filter(identifier__id=int(_row[offset+2])).order_by('timestamp').values_list('timestamp')[0]
                 row[offset+1] = id2colors.get(int(_row[offset+0]), 0)
+                row[offset+2] = ", ".join(id2tags.get(int(_row[offset+0]), []))
+
                 res['data'].append(row)
         elif table_name == table_name_slug(self.TABLE_NAME_CURRENT_CAMPAIGNS) or table_name == table_name_slug(self.TABLE_NAME_CURRENT_THREAT_ACTORS):
 
@@ -884,8 +915,8 @@ class UnifiedSearchSourceDataProvider(BasicTableDataProvider):
 
             self.object2tag_map = {}
             tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk',
-                                                                             'actionable_tags__actionable_tag__context__name',
-                                                                             'actionable_tags__actionable_tag__tag__name')
+                                                                             'actionable_tags__context__name',
+                                                                             'actionable_tags__info__name')
             tag_map = {}
 
             for pk,context_name,tag_name in tag_infos:
@@ -1202,8 +1233,8 @@ class ActionablesContextView(BasicFilterView):
 
             # Compile tag info for SingletonObservables
             self.object2tag_map = {}
-            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
-                                                     'actionable_tags__actionable_tag__tag__name')
+            tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
+                                                     'actionable_tags__info__name')
 
             for pk,context_name,tag_name in tag_infos:
                 if context_name == self.curr_context_name:
@@ -1222,8 +1253,8 @@ class ActionablesContextView(BasicFilterView):
 
             import_info_pks = self.object_list.values_list('sources__import_info',flat=True)
 
-            tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk','actionable_tags__actionable_tag__context__name',
-                                                     'actionable_tags__actionable_tag__tag__name')
+            tag_infos = ImportInfo.objects.filter(pk__in=import_info_pks).values_list('pk','actionable_tags__context__name',
+                                                     'actionable_tags__info__name')
 
             # Prune results without tags (they are of form ``(pk,None,None)``)
 
@@ -1240,15 +1271,9 @@ class ActionablesContextView(BasicFilterView):
 
     @property
     def queryset(self):
-        tagged_object_pks = ActionableTag.objects.filter(context__name=self.curr_context_name)\
-                                         .filter(actionable_tag_thru__content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE)\
-                                        .values_list('actionable_tag_thru__object_id',flat=True)
-
-
-
-        return SingletonObservable.objects.filter(pk__in=tagged_object_pks).select_related('type','subtype',
-                                                                                           'actionable_tags__actionable_tag__context',
-                                                                                           'actionable_tags__actionable_tag__tag').\
+        return SingletonObservable.objects.filter(actionable_tags__context__name=self.curr_context_name).select_related('type','subtype',
+                                                                                           'actionable_tags__context__name',
+                                                                                           'actionable_tags__info__name').\
             prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
@@ -1317,8 +1342,9 @@ class ActionablesContextView(BasicFilterView):
             context_name_pairs = map(lambda x : (cleaned_data['context'],x), tags)
             things_to_tag = map(lambda x: int(x), cleaned_data['checked_items'])
 
-
-            ActionableTag.bulk_action(action = action,
+            #check whether there are things_to_tag selected
+            if things_to_tag:
+                ActionableTag.bulk_action(action = action,
                                           context_name_pairs=context_name_pairs,
                                           thing_to_tag_pks= things_to_tag,
                                           user=self.request.user,
@@ -1345,8 +1371,8 @@ class ActionablesTagHistoryView(BasicTemplateView):
     def get_context_data(self, **kwargs):
         context = super(ActionablesTagHistoryView, self).get_context_data(**kwargs)
 
-        cols_history = ['tag__tag__name','timestamp','action','user__username','content_type_id','object_id','comment']
-        sel_rel = ['tag','user','content_type']
+        cols_history = ['tag__info__name','timestamp','action','user__username','content_type_id','object_id','comment']
+        sel_rel = ['tag__info','user','content_type']
         history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
                          filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
                          filter(tag__context__name=self.tag_context).order_by('-timestamp').\
@@ -1424,8 +1450,8 @@ class ImportInfoList(BasicFilterView):
         if not self.object2tag_map or not object:
 
             self.object2tag_map = {}
-            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
-                                                     'actionable_tags__actionable_tag__tag__name')
+            tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
+                                                     'actionable_tags__info__name')
             for pk,context_name,tag_name in tag_infos:
                 if context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk)
@@ -1636,8 +1662,8 @@ class ImportInfoDetailsView(BasicFilterView):
         if not self.object2tag_map or not object:
 
             self.object2tag_map = {}
-            tag_infos = self.object_list.values_list('pk','actionable_tags__actionable_tag__context__name',
-                                                     'actionable_tags__actionable_tag__tag__name')
+            tag_infos = self.object_list.values_list('pk','actionable_tags__context__name',
+                                                     'actionable_tags__info__name')
             for pk,context_name,tag_name in tag_infos:
                 if True: #context_name == tag_name:
                     set_dict(self.object2tag_map,tag_name,'append',pk,context_name)
@@ -1730,7 +1756,7 @@ class ActionablesContextEditView(BasicDetailView):
 
                 # Rename actionable tags
 
-                TagName.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
+                TagInfo.objects.filter(name=self.object.name).update(name=cleaned_data['new_context_name'])
                 self.object.name = cleaned_data['new_context_name']
                 self.object.type = type
                 messages.success(request,"Context and associated tags renamed to '%s'" % cleaned_data['new_context_name'])
