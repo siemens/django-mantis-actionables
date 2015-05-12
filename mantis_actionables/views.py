@@ -115,10 +115,8 @@ def datatable_query(post, **kwargs):
         mode,q_obj = query_modifier
         if mode == 'filter':
             q = q.filter(q_obj)
-            print "Filtering %s,%s" % query_modifier
         elif mode == 'exclude':
             q = q.exclude(q_obj)
-            print "Excluding %s,%s" % query_modifier
         else:
             raise ValueError("Please provide valid query modifier: %s is not valid." % mode)
     # extend query by kwargs['filter']
@@ -127,7 +125,7 @@ def datatable_query(post, **kwargs):
 
     #for exclude in base_excludes:
     #    q = q.exclude(**exclude)
-    print q.query
+
 
     q = q.values_list(*(cols.values()))
     #sources__id for join on sources table
