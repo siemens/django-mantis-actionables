@@ -656,11 +656,28 @@ class SingletonObservable(models.Model):
 
     actionable_tags_cache = models.TextField(blank=True,default='')
 
+    ids_signature = models.ForeignKey("IDSSignature",
+                                      null=True)
+
     class Meta:
         unique_together = ('type', 'subtype', 'value')
 
     def __unicode__(self):
         return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
+
+
+    def add_ids_signature(self,signature_text):
+        signature_object, created = IDSSignature.objects.get_or_create(content=signature_text)
+        print "Sig obj %s" % signature_object.pk
+        print "IDS Sig id %s" % self.ids_signature_id
+        if (not (signature_object.pk == self.ids_signature_id)):
+            print "Creating history"
+            IDSSignatureRevision.objects.create(
+                                               singleton = self,
+                                               ids_signature = signature_object)
+
+        self.ids_signature = signature_object
+        self.save()
 
 
 
@@ -736,16 +753,19 @@ class SignatureType(models.Model):
     name = models.CharField(max_length=255,unique=True)
 
 class IDSSignature(models.Model):
-    type = models.ForeignKey(SignatureType)
-    value = models.TextField()
+    content = models.TextField(blank=True)
 
-    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
+    import_list = models.ManyToManyField(SingletonObservable,
+                                       through="IDSSignatureRevision",
+                                       )
 
-    sources = generic.GenericRelation(Source,related_query_name='ids_signature')
+class IDSSignatureRevision(models.Model):
+    """
 
-    class Meta:
-        unique_together = ('type', 'value')
-
+    """
+    timestamp = models.DateTimeField(auto_now_add=True,blank=True)
+    singleton = models.ForeignKey(SingletonObservable,related_name='ids_signature_thru')
+    ids_signature = models.ForeignKey(IDSSignature,related_name='singleton_thru')
 
 class ImportInfo(models.Model):
 

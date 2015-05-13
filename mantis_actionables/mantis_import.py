@@ -712,6 +712,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         fact_value_pk = int(result['_value_pk'])
         type = result.get('actionable_type','')
         subtype = result.get('actionable_subtype','')
+        ids_rule = result.get('actionable_ids_rule','')
 
         if not subtype:
             # If by mistake, subtype has been set to None,
@@ -741,6 +742,8 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         observable, observable_created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
                                                                                    subtype=singleton_subtype_obj,
                                                                         value=value)
+        if ids_rule:
+            observable.add_ids_signature(signature_text=ids_rule)
 
         source, source_created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
 
