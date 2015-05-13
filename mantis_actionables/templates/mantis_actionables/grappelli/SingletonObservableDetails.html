@@ -122,6 +122,9 @@
                     <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
                 </a>
                 {% endif %}
+                {% if source.outdated %}
+                    <b>formerly (now removed)</b>
+                {% endif %}
                 in Report {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
                 {%  if stix_tl_obj_url %}
                 <a href="{{ stix_tl_obj_url }}">

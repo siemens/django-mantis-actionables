@@ -443,7 +443,6 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
                 row[5] = row[offset+3]
             row = row[:-5]
 
-
             res['data'].append(row)
 
 
@@ -1624,6 +1623,9 @@ class SingletonObservableDetailView(BasicDetailView):
                                  'import_info__namespace'
                                )
         context['sources'] = self.sources_list
+
+        for source in self.sources_list:
+            print source.outdated
 
 
         return context
