@@ -168,6 +168,10 @@ class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
     value = django_filters.CharFilter(lookup_type='icontains',
                                               label='Value contains')
 
+    actionable_tags__info__name = django_filters.CharFilter(lookup_type='icontains',
+                                              label='Tag contains')
+
+
     sources__import_info__name__OR__sources__top_level_iobject_identifier__latest__name = CharMultiFilter(lookup_type='icontains',
                                                            label='Report name contains')
 
@@ -184,6 +188,7 @@ class ExtendedSingletonObservablesFilter(django_filters.FilterSet):
                   'value',
                   'sources__import_info__name',
                   'sources__top_level_iobject_identifier__latest__name',
+                  'actionable_tags__info__name'
                   ]
 
 

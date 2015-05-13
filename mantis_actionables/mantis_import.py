@@ -17,6 +17,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import re
 import logging
 
 from json import dumps
@@ -63,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
-def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name,fact_pks):
+def determine_matching_dingos_history_entry(action_flag,user,dingos_tag_name,fact_pks):
     """
     Find history information associated with an action (add/remove) on a tag in Dingos.
 
@@ -381,7 +382,7 @@ def update_and_transfer_tags(fact_pks,user=None):
             for tag in added_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found added special tag %s" % tag)
-                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.ADD,
+                    (result_user,comment) = determine_matching_dingos_history_entry(TaggingHistory.ADD,
                                                                                         user,
                                                                                         tag,
                                                                                         fact_ids)
@@ -394,7 +395,7 @@ def update_and_transfer_tags(fact_pks,user=None):
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found context tag %s" % tag)
-                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.REMOVE,
+                    (result_user,comment) = determine_matching_dingos_history_entry(TaggingHistory.REMOVE,
                                                                                         user,
                                                                                         tag,
                                                                                         fact_ids)
@@ -938,12 +939,50 @@ def extract_essence(node_info, graph):
 
 
 
-def outdate_sources():
+def outdate_sources(action=None):
     # find sources of STIX imports that are outdated, i.e.,
     # the pointer to the top-level infoobject does not point to the most recent one of the given
     # identifier.
 
     outdated_sources = Source.objects.exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
 
+    counter = 0
+
     for outdated_source in outdated_sources:
-        print (outdated_source,outdated_source.tags)
+        outdated_source.outdated=True
+        outdated_source.save()
+        singleton_observable = outdated_source.yielded
+        dingos_tags_for_this_top_level_report = outdated_source.top_level_iobject_identifier.tags.all().values_list('name',flat=True)
+        for regular_expr in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX:
+            dingos_tags_for_this_top_level_report.filter(name__regex=regular_expr)
+
+        dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
+          exclude(id=outdated_source.pk).values_list('top_level_iobject_identifier__tags__name',flat=True)
+
+        #all_dingos_tags = set(SingletonObservable.objects.filter(pk=singleton_observable.pk).\
+        #                                                  values_list('sources__top_level_iobject_identifier__tags__name',flat=True))
+
+        tags_to_mark_as_outdated = set()
+
+        for tag in dingos_tags_for_this_top_level_report:
+            if not tag in dingos_tags_for_all_other_top_level_reports:
+                tags_to_mark_as_outdated.add(tag)
+
+        if tags_to_mark_as_outdated:
+
+            context_name_pairs = map(lambda x : (x,'OUTDATED'), tags_to_mark_as_outdated )
+
+            ActionableTag.bulk_action(action='add',
+                                      context_name_pairs=context_name_pairs,
+                                      thing_to_tag_pks=[outdated_source.yielded.pk],
+                                      comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
+                                      supress_transfer_to_dingos=True)
+
+
+        #print outdated_source.yielded
+        #print outdated_source.top_level_iobject_identifier_id
+        #print "This %s" % dingos_tags_for_this_top_level_report
+        ##print "All %s" % all_dingos_tags
+        #print "Other %s" % dingos_tags_for_all_other_top_level_reports
+        #print "Outdate %s" % context_name_pairs
+

@@ -1277,7 +1277,8 @@ class ActionablesContextView(BasicFilterView):
             prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
-            prefetch_related('sources__import_info','sources__import_info__namespace')
+            prefetch_related('sources__import_info','sources__import_info__namespace').distinct()#('type','subtype','value')
+
 
 
     def get_context_data(self, **kwargs):
