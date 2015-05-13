@@ -385,6 +385,8 @@ class SingeltonObservablesWithSourceOneTableDataProvider(BasicTableDataProvider)
 
     ALL_IMPORTS_TABLE_SPEC = {
         'model' : SingletonObservable,
+        'query_modifiers' : [('filter',Q(sources__outdated=False)),
+        ],
         'count': False,
         'COMMON_BASE' : [
 
@@ -475,6 +477,7 @@ class SingeltonObservablesWithSourceOneTableDataProviderFilterByContext(BasicTab
 
     ALL_IMPORTS_TABLE_SPEC_F_CONTEXT = {
         'model' : SingletonObservable,
+        'query_modifiers' : [('filter',Q(sources__outdated=False))],
         'count': False,
         'COMMON_BASE' : [
 
@@ -1275,6 +1278,7 @@ class ActionablesContextView(BasicFilterView):
                                                                                            'actionable_tags__context__name',
                                                                                            'actionable_tags__info__name').\
             prefetch_related('sources__top_level_iobject_identifier__latest','sources__top_level_iobject_identifier__namespace').\
+                        prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest','sources__iobject_identifier__namespace').\
             prefetch_related('sources__iobject_identifier__latest__iobject_type').\
             prefetch_related('sources__import_info','sources__import_info__namespace').distinct()#('type','subtype','value')

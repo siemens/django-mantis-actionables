@@ -944,9 +944,9 @@ def outdate_sources(action=None):
     # the pointer to the top-level infoobject does not point to the most recent one of the given
     # identifier.
 
-    outdated_sources = Source.objects.exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
+    outdated_sources = Source.objects.filter(outdated=False).exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
 
-    counter = 0
+
 
     for outdated_source in outdated_sources:
         outdated_source.outdated=True
@@ -977,6 +977,8 @@ def outdate_sources(action=None):
                                       thing_to_tag_pks=[outdated_source.yielded.pk],
                                       comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
                                       supress_transfer_to_dingos=True)
+            print context_name_pairs
+            break
 
 
         #print outdated_source.yielded

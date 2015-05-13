@@ -116,13 +116,12 @@
 	      {% if source.top_level_iobject_identifier_id %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
               {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
-                {{ source.iobject_identifier.latest.iobject_type.name }}
+                {{ source.iobject_identifier.namespace.uri }}: {{ source.iobject_identifier.latest.iobject_type.name }}
                 {%  if stix_obj_url %}
                 <a href="{{ stix_obj_url }}">
                     <img src="/static/admin/img/selector-search.gif" alt="Lookup" height="16" width="16">
                 </a>
                 {% endif %}
-
                 in Report {{source.top_level_iobject_identifier.namespace.uri}}  '{{ source.top_level_iobject_identifier.latest.name }}'
                 {%  if stix_tl_obj_url %}
                 <a href="{{ stix_tl_obj_url }}">
