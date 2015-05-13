@@ -114,6 +114,17 @@
               {% show_addTagInput_actionables object.pk view.curr_context_name %}
           {% endif %}
           </td>
+         {% if object.ids_signature %}
+             <tr class="grp-row grp-row-{{ odd_even }}">
+                         <td></td>
+                       <td>Rule Contents</td>
+            <td colspan="3" class="w-1 nowrap middle">
+                <pre>
+              {{ object.ids_signature.content }} 
+                </pre>
+            </td>
+             </tr>
+             {% endif %}
          {% for source in object.sources.all %}
              {% if not source.outdated %}
            <tr class="grp-row grp-row-{{ odd_even }}">

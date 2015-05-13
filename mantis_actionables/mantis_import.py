@@ -826,6 +826,14 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
                                  related_entities = entities,
                                  graph=graph)
 
+    # An import may lead to outdated sources: picture the situation where
+    # a certain observable was referenced by a given report, but is not
+    # referenced anymore in the updated version of the report that was
+    # just imported. The function ``outdate_sources`` catches such
+    # outdated sources and treats them accordingly.
+
+    #outdate_sources()
+
     fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
 
@@ -942,28 +950,64 @@ def extract_essence(node_info, graph):
 
 
 
-def outdate_sources(action=None):
-    # find sources of STIX imports that are outdated, i.e.,
-    # the pointer to the top-level infoobject does not point to the most recent one of the given
-    # identifier.
+def outdate_sources(simulate=True):
+    """
+    Find outdated sources and mark them as such; also write 'OUTDATE' tags where required.
+
+    An import may lead to outdated sources: picture the situation where
+    a certain observable was referenced by a given report, but is not
+    referenced anymore in the updated version of the report that was
+    just imported. The function ``outdate_sources`` catches such
+    outdated sources and treats them accordingly.
+
+    """
+
+    # Find sources of STIX imports that are outdated, i.e.,
+    # the pointer to the top-level infoobject does not point to the most
+    # recent infoobject of the same identifier.
 
     outdated_sources = Source.objects.filter(outdated=False).exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
 
+    print "Starting"
 
 
     for outdated_source in outdated_sources:
-        outdated_source.outdated=True
-        outdated_source.save()
+        # Set the outdate flag -- this is used in searches to distinguish
+        # outdated sources.
+
         singleton_observable = outdated_source.yielded
+
+        if not simulate:
+            outdated_source.outdated=True
+            outdated_source.save()
+
+        else:
+
+            logger.info("Found outdated source for %s" % singleton_observable)
+
+        # Get the dingos tags associated with this source via the link to
+        # the dingos fact in the source
+
         dingos_tags_for_this_top_level_report = outdated_source.top_level_iobject_identifier.tags.all().values_list('name',flat=True)
+
+        # Reduce the list to tags that denote an Actionable Context
         for regular_expr in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX:
             dingos_tags_for_this_top_level_report.filter(name__regex=regular_expr)
 
-        dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
-          exclude(id=outdated_source.pk).values_list('top_level_iobject_identifier__tags__name',flat=True)
+        # Get the tags associated with the associated singleton observable via
+        # all *other* non-outdated sources
 
-        #all_dingos_tags = set(SingletonObservable.objects.filter(pk=singleton_observable.pk).\
-        #                                                  values_list('sources__top_level_iobject_identifier__tags__name',flat=True))
+        dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
+            filter(outdated=False).values_list('top_level_iobject_identifier__tags__name',flat=True)
+
+        if simulate:
+            # We have not marked this source as outdated
+            dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
+                filter(outdated=False).exclude(id=outdated_source.pk).values_list('top_level_iobject_identifier__tags__name',flat=True)
+
+        # Find out whether there are tags that were associated with singleton observable
+        # yielded by the present source exclusively via this source -- those are
+        # the tags that should be marked as possibly OUTDATED.
 
         tags_to_mark_as_outdated = set()
 
@@ -974,20 +1018,12 @@ def outdate_sources(action=None):
         if tags_to_mark_as_outdated:
 
             context_name_pairs = map(lambda x : (x,'OUTDATED'), tags_to_mark_as_outdated )
-
-            ActionableTag.bulk_action(action='add',
-                                      context_name_pairs=context_name_pairs,
-                                      thing_to_tag_pks=[outdated_source.yielded.pk],
-                                      comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
-                                      supress_transfer_to_dingos=True)
-            print context_name_pairs
-            break
-
-
-        #print outdated_source.yielded
-        #print outdated_source.top_level_iobject_identifier_id
-        #print "This %s" % dingos_tags_for_this_top_level_report
-        ##print "All %s" % all_dingos_tags
-        #print "Other %s" % dingos_tags_for_all_other_top_level_reports
-        #print "Outdate %s" % context_name_pairs
+            if not simulate:
+                ActionableTag.bulk_action(action='add',
+                                          context_name_pairs=context_name_pairs,
+                                          thing_to_tag_pks=[outdated_source.yielded.pk],
+                                          comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
+                                          supress_transfer_to_dingos=True)
+            else:
+                logger.info("SIMULATE. Would have tagged %s" % context_name_pairs)
 
