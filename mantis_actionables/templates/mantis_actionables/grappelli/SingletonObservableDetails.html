@@ -154,7 +154,55 @@
     </div>
     </div>
 
+ <div class="c-2">
 
+
+    <div class="grp-module">
+      <h2 class="grp-collapse-handler">Tagging history</h2>
+        <table>
+          <thead>
+            <tr>
+             <th>
+               Date
+             </th>
+                <th>
+                    Tag
+                </th>
+
+             <th>
+               Action
+             </th>
+             <th>
+               User
+             </th>
+
+             <th>
+               Comment
+             </th>
+          </tr>
+          </thead>
+        <tbody>
+
+        {% for entry in tag_history %}
+
+            <tr class="grp-row grp-row-{% cycle 'odd' 'even' %}">
+            <td>{{ entry.timestamp }}</td>
+                <td>
+                {% show_TagDisplay entry.tag__info__name None False %}
+                </td>
+              <td>{% with action=map_action|get_value:entry.action %}{{ action.1 }}{% endwith %}</td>
+              <td>{{ entry.user__username }}</td>
+
+
+
+              <td>{{ entry.comment }}</td>
+            </tr>
+
+        {% endfor %}
+        </tbody>
+        </table>
+    </div>
+  </div>
 
 
 

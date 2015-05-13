@@ -1593,27 +1593,20 @@ class SingletonObservableDetailView(BasicDetailView):
 
     sources_list = []
 
+    tag_history = []
+
     def get_context_data(self, **kwargs):
 
         context = super(SingletonObservableDetailView, self).get_context_data(**kwargs)
 
-        if self.stati_list:
-
-            return self.stati_list
-        else:
-
-
+        if not self.stati_list:
             self.stati_list = Status2X.objects.filter(object_id=self.kwargs['pk'],
                                                       content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp")
 
             #self.stati_list = Status.objects.filter(
         context['stati2x'] = self.stati_list
 
-        if self.sources_list:
-
-            return self.sources_list
-        else:
-
+        if not self.sources_list:
             self.sources_list = Source.objects.filter(object_id=self.kwargs['pk'],
                                                       content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE).order_by("-timestamp").\
                 prefetch_related('top_level_iobject_identifier__latest',
@@ -1625,8 +1618,18 @@ class SingletonObservableDetailView(BasicDetailView):
                                )
         context['sources'] = self.sources_list
 
-        for source in self.sources_list:
-            print source.outdated
+
+        if not self.tag_history:
+
+            cols_history = ['tag__info__name','timestamp','action','user__username','content_type_id','object_id','comment']
+            sel_rel = ['tag__info','user','content_type']
+            history_q = list(ActionableTaggingHistory.objects.select_related(*sel_rel).\
+                             filter(content_type_id=CONTENT_TYPE_SINGLETON_OBSERVABLE,object_id=self.object.pk).\
+                             order_by('-timestamp').\
+                             values(*cols_history))
+            self.tag_history = history_q
+
+        context['tag_history'] = self.tag_history
 
 
         return context
