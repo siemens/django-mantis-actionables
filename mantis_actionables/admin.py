@@ -112,8 +112,8 @@ class SignatureTypeAdmin(admin.ModelAdmin):
 
 class IDSSignatureAdmin(admin.ModelAdmin):
 
-    list_display = (u'id', 'type', 'value')
-    list_filter = ('type',)
+    list_display = (u'content',)
+    list_filter = ('content',)
 
 
 #class ImportInfoAdmin(admin.ModelAdmin):

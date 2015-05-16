@@ -33,10 +33,14 @@ from django.utils import timezone
 
 from dingos.models import InfoObject, Fact, FactValue, IdentifierNameSpace, Identifier
 
+from taggit.models import TagBase, GenericTaggedItemBase
+from taggit.managers import TaggableManager, _TaggableManager
+from taggit.utils import require_instance_manager
+from django.utils.translation import ugettext_lazy as _
+
 logger = logging.getLogger(__name__)
 
 import read_settings
-
 
 class CachingManager(models.Manager):
     """
@@ -76,9 +80,9 @@ class CachingManager(models.Manager):
         "SingletonObservableType" : ['name'],
         "SingletonObservableSubtype" : ['name'],
         "Context" : ["name"],
-        "TagName" : ["name"],
+        "TagInfo" : ['name'],
         "EntityType" : ["name"],
-        "ActionableTag" : ["context_id","tag_id"]
+        "ActionableTag" : ["context_id","info_id"]
     }
 
     def get_or_create(self, defaults=None, **kwargs):
@@ -111,6 +115,200 @@ class CachingManager(models.Manager):
         else:
             (object, created)  = super(CachingManager, self).get_or_create(defaults=defaults, **kwargs)
 
+
+class ActionableTaggableManager(_TaggableManager):
+
+    @require_instance_manager
+    def add(self, *tags):
+        tag_objs = set()
+        tag_pks = set()
+        for t in tags:
+            if isinstance(t, self.through.tag_model()):
+                tag_objs.add(t)
+            elif isinstance(t, int):
+                tag_pks.add(t)
+            else:
+                raise ValueError("Cannot add {0} ({1}). Expected {2} or int.".format(
+                    t, type(t), type(self.through.tag_model())))
+
+        for tag in tag_objs:
+            self.through.objects.get_or_create(tag=tag, **self._lookup_kwargs())
+        for tag_pk in tag_pks:
+            self.through.objects.get_or_create(tag_id=tag_pk, **self._lookup_kwargs())
+
+    @require_instance_manager
+    def remove(self, *tags):
+        tag_pks = [x.id if isinstance(x,self.through.tag_model()) else x for x in tags]
+        self.through.objects.filter(**self._lookup_kwargs()).filter(
+            tag_id__in=tag_pks).delete()
+
+
+class TagInfo(models.Model):
+    name = models.CharField(max_length=40,unique=True)
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    def __unicode__(self):
+        return "%s" % (self.name)
+
+
+class ActionableTag(TagBase):
+    context = models.ForeignKey('Context',
+                                null=True)
+
+    info = models.ForeignKey(TagInfo)
+
+    objects = models.Manager()
+    cached_objects = CachingManager()
+
+    class Meta:
+        verbose_name = _("ActionableTag")
+        verbose_name_plural = _("ActionableTags")
+        unique_together=('context','info')
+
+    def unique_id(self):
+        return "%s:%s" % (self.context.name,self.info.name)
+
+    def save(self, *args, **kwargs):
+        if not self.name or self.name == 'fill-in':
+            self.name = self.unique_id()
+            self.slug = self.slugify(self.name)
+        return super(ActionableTag, self).save(*args, **kwargs)
+
+    @classmethod
+    def bulk_action(cls,
+                    action,
+                    context_name_pairs,
+                    # TODO: once we want to generalize, allowing tagging of other
+                    # things, we need to also the model for each pk
+                    thing_to_tag_pks,
+                    thing_to_tag_model=None,
+                    user=None,
+                    comment='',
+                    supress_transfer_to_dingos=False):
+
+        """
+        Input:
+        - action: either 'add' or 'remove'
+        - context_name_pairs: list of pairs '('context','tag_name')' denoting
+          the actionable tags to added or removed
+        - things_to_tag_pks: pks of SingletonObjects to be tagged
+        - user: user object of user doing the tagging
+        - comment: comment string
+
+        The function carries out the action (addition or removing) of the
+        provided actionable tags and also fills in the actionable-tag history.
+
+
+        """
+        # TODO: Import must be here, otherwise we get an exception "models not ready
+        # at startup.
+        from .mantis_import import update_and_transfer_tag_action_to_dingos
+        # The content type must be defined here: defining it outside the function
+        # leads to a circular import
+        if not thing_to_tag_model:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(SingletonObservable)
+        else:
+            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(thing_to_tag_model)
+
+        # Create the list of actionable tags for this bulk action
+        actionable_tag_list = []
+
+        context_name_set = set([])
+        for (context_name,tag_name) in context_name_pairs:
+
+            context,created = Context.cached_objects.get_or_create(name=context_name,
+                                                                   defaults={'type':Context.TYPE_RMAP.get(context_name.split('-')[0].lower(),
+                                                                                                          Context.TYPE_INVESTIGATION)})
+
+            context_name_set.add(context_name)
+
+            tag_info, created = TagInfo.cached_objects.get_or_create(name=tag_name)
+
+            actionable_tag, created = ActionableTag.cached_objects.get_or_create(info_id=tag_info.id,
+                                                                                 context_id=context.id)
+
+            actionable_tag_list.append(actionable_tag)
+
+        logger.debug("Got actionable tags %s from DB" % actionable_tag_list)
+
+        if action == 'add':
+            action_flag = ActionableTaggingHistory.ADD
+        elif action == 'remove':
+            action_flag = ActionableTaggingHistory.REMOVE
+
+        for pk in thing_to_tag_pks:
+            for actionable_tag in actionable_tag_list:
+                affected_tags = set([])
+                if action_flag == ActionableTaggingHistory.ADD:
+
+                    tagged_actionable_item, created = TaggedActionableItem.objects.get_or_create(tag_id=actionable_tag.id,
+                                                               object_id=pk,
+                                                               content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
+
+                    if created:
+                        affected_tags.add(actionable_tag)
+
+                    logger.debug("tagged_actionable_item %s, created: %s" % (tagged_actionable_item.pk,created))
+
+                elif action_flag == ActionableTaggingHistory.REMOVE:
+                    tagged_actionable_item = TaggedActionableItem.objects.filter(tag_id=actionable_tag.id,
+                                                                              object_id=pk,
+                                                                              content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
+
+                    if tagged_actionable_item:
+                        tagged_actionable_item.delete()
+                        affected_tags.add(actionable_tag)
+
+                    if actionable_tag.name == actionable_tag.context.name:
+                        # This tag marks an context and the whole context is deleted:
+                        # We therefore need to remove all tags in the context
+                        tagged_actionable_items = TaggedActionableItem.objects.filter(tag__context=actionable_tag.context,
+                                                                                     object_id=pk,
+                                                                                     content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
+
+                        for tagged_actionable_item in tagged_actionable_items:
+                            affected_tags.add(tagged_actionable_item.tag)
+                            tagged_actionable_item.delete()
+
+            logger.debug("Updating history")
+            ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
+                                                                 affected_tags,
+                                                                 [pk],
+                                                                 thing_to_tag_model,
+                                                                 user,
+                                                                 comment)
+            logger.debug("History updated")
+        if not supress_transfer_to_dingos and CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+            update_and_transfer_tag_action_to_dingos(action,
+                                                     context_name_set,
+                                                     thing_to_tag_pks,
+                                                     user=user,
+                                                     comment=comment)
+
+        if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
+            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks)
+
+            for singleton in singletons:
+                actionable_tag_list_repr = list(singleton.actionable_tags.names())
+                actionable_tag_list_repr.sort()
+
+                updated_tag_info = ",".join(actionable_tag_list_repr)
+
+                singleton.actionable_tags_cache = updated_tag_info
+
+                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
+
+                singleton.save()
+
+
+class TaggedActionableItem(GenericTaggedItemBase):
+    tag = models.ForeignKey(ActionableTag,
+                            related_name="%(app_label)s_%(class)s_items")
+
+    class Meta:
+        verbose_name = _("TaggedActionableItem")
+        verbose_name_plural = _("TaggedActionableItems")
 
 
 class Action(models.Model):
@@ -157,6 +355,9 @@ class STIX_Entity(models.Model):
         unique_together = ('iobject_identifier','non_iobject_identifier')
 
 class Source(models.Model):
+
+    outdated = models.BooleanField(default=False)
+
     timestamp = models.DateTimeField(auto_now_add=True, blank=True)
 
     # If the source is MANTIS, we populate the following fields:
@@ -449,17 +650,34 @@ class SingletonObservable(models.Model):
 
     sources = generic.GenericRelation(Source,related_query_name='singleton_observables')
 
-    actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
+    actionable_tags = TaggableManager(through=TaggedActionableItem,manager=ActionableTaggableManager)
 
     mantis_tags = models.TextField(blank=True,default='')
 
     actionable_tags_cache = models.TextField(blank=True,default='')
+
+    ids_signature = models.ForeignKey("IDSSignature",
+                                      null=True)
 
     class Meta:
         unique_together = ('type', 'subtype', 'value')
 
     def __unicode__(self):
         return "(%s/%s):%s" % (self.type.name,self.subtype.name,self.value)
+
+
+    def add_ids_signature(self,signature_text):
+        signature_object, created = IDSSignature.objects.get_or_create(content=signature_text)
+        print "Sig obj %s" % signature_object.pk
+        print "IDS Sig id %s" % self.ids_signature_id
+        if (not (signature_object.pk == self.ids_signature_id)):
+            print "Creating history"
+            IDSSignatureRevision.objects.create(
+                                               singleton = self,
+                                               ids_signature = signature_object)
+
+        self.ids_signature = signature_object
+        self.save()
 
 
 
@@ -535,16 +753,19 @@ class SignatureType(models.Model):
     name = models.CharField(max_length=255,unique=True)
 
 class IDSSignature(models.Model):
-    type = models.ForeignKey(SignatureType)
-    value = models.TextField()
+    content = models.TextField(blank=True)
 
-    status_thru = generic.GenericRelation(Action,related_query_name='singleton_observables')
+    import_list = models.ManyToManyField(SingletonObservable,
+                                       through="IDSSignatureRevision",
+                                       )
 
-    sources = generic.GenericRelation(Source,related_query_name='ids_signature')
+class IDSSignatureRevision(models.Model):
+    """
 
-    class Meta:
-        unique_together = ('type', 'value')
-
+    """
+    timestamp = models.DateTimeField(auto_now_add=True,blank=True)
+    singleton = models.ForeignKey(SingletonObservable,related_name='ids_signature_thru')
+    ids_signature = models.ForeignKey(IDSSignature,related_name='singleton_thru')
 
 class ImportInfo(models.Model):
 
@@ -590,7 +811,7 @@ class ImportInfo(models.Model):
     # time by a Relationship to InfoObjects in the Dingos DB.
     # To get started, we write the name directly
 
-    actionable_tags = generic.GenericRelation('ActionableTag2X',related_query_name='singleton_observables')
+    actionable_tags = TaggableManager(through=TaggedActionableItem,manager=ActionableTaggableManager)
 
     related_stix_entities = models.ManyToManyField(STIX_Entity)
 
@@ -630,181 +851,6 @@ class Context(models.Model):
     def get_absolute_url(self):
         from django.core.urlresolvers import reverse
         return reverse('actionables_context_view', args=[self.name])
-
-
-class TagName(models.Model):
-    name = models.CharField(max_length=40,unique=True)
-    objects = models.Manager()
-    cached_objects = CachingManager()
-
-
-
-    def __unicode__(self):
-        return "%s" % (self.name)
-
-
-class ActionableTag(models.Model):
-    context = models.ForeignKey(Context,
-                                null=True)
-    tag = models.ForeignKey(TagName)
-
-    objects = models.Manager()
-    cached_objects = CachingManager()
-
-    class Meta:
-        unique_together=('context','tag')
-
-    @classmethod
-    def bulk_action(cls,
-                    action,
-                    context_name_pairs,
-                    # TODO: once we want to generalize, allowing tagging of other
-                    # things, we need to also the model for each pk
-                    thing_to_tag_pks,
-                    thing_to_tag_model=None,
-                    user=None,
-                    comment='',
-                    supress_transfer_to_dingos=False):
-
-        """
-        Input:
-        - action: either 'add' or 'remove'
-        - context_name_pairs: list of pairs '('context','tag_name')' denoting
-          the actionable tags to added or removed
-        - things_to_tag_pks: pks of SingletonObjects to be tagged
-        - user: user object of user doing the tagging
-        - comment: comment string
-
-        The function carries out the action (addition or removing) of the
-        provided actionable tags and also fills in the actionable-tag history.
-
-
-        """
-        # TODO: Import must be here, otherwise we get an exception "models not ready
-        # at startup.
-        from .mantis_import import update_and_transfer_tag_action_to_dingos
-        # The content type must be defined here: defining it outside the function
-        # leads to a circular import
-        if not thing_to_tag_model:
-            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(SingletonObservable)
-        else:
-            CONTENT_TYPE_OF_THINGS_TO_TAG = ContentType.objects.get_for_model(thing_to_tag_model)
-
-        # Create the list of actionable tags for this bulk action
-        actionable_tag_list = []
-
-        context_name_set = set([])
-        for (context_name,tag_name) in context_name_pairs:
-
-            context,created = Context.cached_objects.get_or_create(name=context_name,
-                                                                   defaults={'type':Context.TYPE_RMAP.get(context_name.split('-')[0].lower(),
-                                                                                                          Context.TYPE_INVESTIGATION)})
-
-            context_name_set.add(context_name)
-
-            tag_name,created = TagName.cached_objects.get_or_create(name=tag_name)
-
-            actionable_tag, created = ActionableTag.cached_objects.get_or_create(context_id=context.pk,
-                                                                                 tag_id=tag_name.pk)
-
-
-
-
-            actionable_tag_list.append(actionable_tag)
-
-        logger.debug("Got actionable tags %s from DB" % actionable_tag_list)
-
-        if action == 'add':
-            action_flag = ActionableTaggingHistory.ADD
-        elif action == 'remove':
-            action_flag = ActionableTaggingHistory.REMOVE
-        for pk in thing_to_tag_pks:
-            logger.debug("Treating thing to tag with pk %s" % pk)
-
-            affected_tags = set([])
-            for actionable_tag in actionable_tag_list:
-
-                if action_flag == ActionableTaggingHistory.ADD:
-
-                    actionable_tag_2x,created = ActionableTag2X.objects.get_or_create(actionable_tag=actionable_tag,
-                                                                                      object_id=pk,
-                                                                                      content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
-                    if created:
-
-                        affected_tags.add(actionable_tag)
-
-
-                    logger.debug("Actionable_tag_2x %s, created: %s" % (actionable_tag_2x.pk,created))
-
-                elif action_flag == ActionableTaggingHistory.REMOVE:
-                    actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag=actionable_tag,
-                                                                        object_id=pk,
-                                                                        content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
-
-                    if actionable_tag_2xs:
-                        actionable_tag_2xs.delete()
-                        affected_tags.add(actionable_tag)
-                    if actionable_tag.tag.name == actionable_tag.context.name:
-                        # This tag marks an context and the whole context is deleted:
-                        # We therefore need to remove all tags in the context
-                        actionable_tag_2xs = ActionableTag2X.objects.filter(actionable_tag__context=actionable_tag.context,
-                                                                            object_id=pk,
-                                                                            content_type=CONTENT_TYPE_OF_THINGS_TO_TAG)
-                        for actionable_tag_2x in actionable_tag_2xs:
-                            affected_tags.add(actionable_tag_2x.actionable_tag)
-                        actionable_tag_2xs.delete()
-
-            logger.debug("Updating history")
-
-            ActionableTaggingHistory.bulk_create_tagging_history(action_flag,
-                                                                 affected_tags,
-                                                                 [pk],
-                                                                 thing_to_tag_model,
-                                                                 user,
-                                                                 comment)
-            logger.debug("History updated")
-        if not supress_transfer_to_dingos and CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
-            update_and_transfer_tag_action_to_dingos(action,
-                                                     context_name_set,
-                                                     thing_to_tag_pks,
-                                                     user=user,
-                                                     comment=comment)
-        if CONTENT_TYPE_OF_THINGS_TO_TAG == ContentType.objects.get_for_model(SingletonObservable):
-            singletons = SingletonObservable.objects.filter(pk__in=thing_to_tag_pks).select_related('actionable_tags__actionable_tag__context','actionable_tags__actionable_tag__tag')
-            for singleton in singletons:
-
-                actionable_tag_set = set(map(lambda x: "%s:%s" % (x.actionable_tag.context.name,
-                                                                  x.actionable_tag.tag.name),
-                                             singleton.actionable_tags.all()))
-                actionable_tag_list_repr = list(actionable_tag_set)
-                actionable_tag_list_repr.sort()
-
-                updated_tag_info = ",".join(actionable_tag_list_repr)
-
-                singleton.actionable_tags_cache = updated_tag_info
-
-                logger.debug("For singleton with pk %s found tags %s" % (singleton.pk,updated_tag_info))
-
-                singleton.save()
-
-
-
-class ActionableTag2X(models.Model):
-
-    actionable_tag = models.ForeignKey(ActionableTag,
-                                related_name='actionable_tag_thru')
-
-
-    content_type = models.ForeignKey(ContentType)
-    object_id = models.PositiveIntegerField()
-    tagged = generic.GenericForeignKey('content_type', 'object_id')
-
-    class Meta:
-        unique_together = ('actionable_tag',
-                           'content_type',
-                           'object_id',
-                           )
-
 
 
 class ActionableTaggingHistory(models.Model):

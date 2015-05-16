@@ -17,6 +17,7 @@
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import re
 import logging
 
 from json import dumps
@@ -32,7 +33,7 @@ from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.contrib.contenttypes.models import ContentType
 
-from django.db.models import Q
+from django.db.models import Q,F
 
 from dingos.models import InfoObject,Fact,TaggingHistory
 from dingos.view_classes import POSTPROCESSOR_REGISTRY
@@ -63,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 CONTENT_TYPE_SINGLETON_OBSERVABLE = ContentType.objects.get_for_model(SingletonObservable)
 
-def determine_matching_dingos_tag_history_entry(action_flag,user,dingos_tag_name,fact_pks):
+def determine_matching_dingos_history_entry(action_flag,user,dingos_tag_name,fact_pks):
     """
     Find history information associated with an action (add/remove) on a tag in Dingos.
 
@@ -381,7 +382,7 @@ def update_and_transfer_tags(fact_pks,user=None):
             for tag in added_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found added special tag %s" % tag)
-                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.ADD,
+                    (result_user,comment) = determine_matching_dingos_history_entry(TaggingHistory.ADD,
                                                                                         user,
                                                                                         tag,
                                                                                         fact_ids)
@@ -394,7 +395,7 @@ def update_and_transfer_tags(fact_pks,user=None):
             for tag in removed_tags:
                 if any(regex.match(tag) for regex in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX):
                     logger.debug("Found context tag %s" % tag)
-                    (result_user,comment) = determine_matching_dingos_tag_history_entry(TaggingHistory.REMOVE,
+                    (result_user,comment) = determine_matching_dingos_history_entry(TaggingHistory.REMOVE,
                                                                                         user,
                                                                                         tag,
                                                                                         fact_ids)
@@ -711,6 +712,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         fact_value_pk = int(result['_value_pk'])
         type = result.get('actionable_type','')
         subtype = result.get('actionable_subtype','')
+        ids_rule = result.get('actionable_ids_rule','')
 
         if not subtype:
             # If by mistake, subtype has been set to None,
@@ -740,6 +742,8 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
         observable, observable_created = SingletonObservable.objects.get_or_create(type=singleton_type_obj,
                                                                                    subtype=singleton_subtype_obj,
                                                                         value=value)
+        if ids_rule:
+            observable.add_ids_signature(signature_text=ids_rule)
 
         source, source_created = Source.objects.get_or_create(iobject_identifier_id=identifier_pk,
 
@@ -821,6 +825,14 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
                                  source_obj = source,
                                  related_entities = entities,
                                  graph=graph)
+
+    # An import may lead to outdated sources: picture the situation where
+    # a certain observable was referenced by a given report, but is not
+    # referenced anymore in the updated version of the report that was
+    # just imported. The function ``outdate_sources`` catches such
+    # outdated sources and treats them accordingly.
+
+    outdate_sources()
 
     fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
@@ -937,4 +949,86 @@ def extract_essence(node_info, graph):
     return result
 
 
+
+def outdate_sources(simulate=True):
+    """
+    Find outdated sources and mark them as such; also write 'OUTDATE' tags where required.
+
+    An import may lead to outdated sources: picture the situation where
+    a certain observable was referenced by a given report, but is not
+    referenced anymore in the updated version of the report that was
+    just imported. The function ``outdate_sources`` catches such
+    outdated sources and treats them accordingly.
+
+    """
+
+    # Find sources of STIX imports that are outdated, i.e.,
+    # the pointer to the top-level infoobject does not point to the most
+    # recent infoobject of the same identifier.
+
+    outdated_sources = Source.objects.filter(outdated=False).exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
+
+    outdated_sources_pks = map(lambda x: x.pk,outdated_sources)
+
+    print "Starting"
+
+
+    for outdated_source in outdated_sources:
+        # Set the outdate flag -- this is used in searches to distinguish
+        # outdated sources.
+
+        singleton_observable = outdated_source.yielded
+
+        if not simulate:
+            outdated_source.outdated=True
+            outdated_source.save()
+
+        else:
+
+            logger.info("Found outdated source for %s" % singleton_observable)
+
+        # Get the dingos tags associated with this source via the link to
+        # the dingos fact in the source
+
+        dingos_tags_for_this_top_level_report = outdated_source.top_level_iobject_identifier.tags.all().values_list('name',flat=True)
+
+        contexts_attached_to_yieldable = set(map(lambda x: x.context.name, outdated_source.yielded.actionable_tags.all()))
+
+
+        # Reduce the list to tags that denote an Actionable Context
+        for regular_expr in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX:
+            dingos_tags_for_this_top_level_report.filter(name__regex=regular_expr)
+
+        # Get the tags associated with the associated singleton observable via
+        # all *other* non-outdated sources
+
+        dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
+            filter(outdated=False).exclude(pk__in=outdated_sources_pks).values_list('top_level_iobject_identifier__tags__name',flat=True)
+
+        #if simulate:
+        #    # We have not marked this source as outdated
+        #    dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
+        #        filter(outdated=False).exclude(id__in=).values_list('top_level_iobject_identifier__tags__name',flat=True)
+
+        # Find out whether there are tags that were associated with singleton observable
+        # yielded by the present source exclusively via this source -- those are
+        # the tags that should be marked as possibly OUTDATED.
+
+        tags_to_mark_as_outdated = set()
+
+        for tag in dingos_tags_for_this_top_level_report:
+            if (not tag in dingos_tags_for_all_other_top_level_reports) and (tag in contexts_attached_to_yieldable):
+                tags_to_mark_as_outdated.add(tag)
+
+        if tags_to_mark_as_outdated:
+
+            context_name_pairs = map(lambda x : (x,'OUTDATED'), tags_to_mark_as_outdated )
+            if not simulate:
+                ActionableTag.bulk_action(action='add',
+                                          context_name_pairs=context_name_pairs,
+                                          thing_to_tag_pks=[outdated_source.yielded.pk],
+                                          comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
+                                          supress_transfer_to_dingos=True)
+            else:
+                logger.info("SIMULATE. Would have tagged %s for %s" % (context_name_pairs,outdated_source.yielded))
 

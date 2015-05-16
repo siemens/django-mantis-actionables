@@ -114,7 +114,19 @@
               {% show_addTagInput_actionables object.pk view.curr_context_name %}
           {% endif %}
           </td>
+         {% if object.ids_signature %}
+             <tr class="grp-row grp-row-{{ odd_even }}">
+                         <td></td>
+                       <td>Rule Contents</td>
+            <td colspan="3" class="w-1 nowrap middle">
+                <pre>
+              {{ object.ids_signature.content }}
+                </pre>
+            </td>
+             </tr>
+             {% endif %}
          {% for source in object.sources.all %}
+             {% if not source.outdated %}
            <tr class="grp-row grp-row-{{ odd_even }}">
             <td></td>
                        <td></td>
@@ -122,6 +134,8 @@
 	      {% if source.top_level_iobject_identifier %}
                 {% url 'url.dingos.view.infoobject' pk=source.top_level_iobject_identifier.latest.pk as stix_tl_obj_url %}
               {% url 'url.dingos.view.infoobject' pk=source.iobject_identifier.latest.pk as stix_obj_url %}
+
+                {{source.iobject_identifier.namespace.uri}}:
                 {{ source.iobject_identifier.latest.iobject_type.name }}
                 {%  if stix_obj_url %}
                 <a href="{{ stix_obj_url }}">
@@ -165,8 +179,11 @@
             </td>
 
            </tr>
+             {% endif %}
          {% endfor %}
+
          {% endfor %}
+
         </tbody>
        </table>
         {% if is_paginated %}

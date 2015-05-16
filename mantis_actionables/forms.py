@@ -19,7 +19,7 @@
 #
 
 import autocomplete_light
-from .models import TagName, Context, ActionableTag
+from .models import Context, TagInfo
 from django import forms
 
 from django.forms import widgets
@@ -33,9 +33,10 @@ from dingos import DINGOS_MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX
 from dingos.forms import ResultActionForm
 
 class TagForm(autocomplete_light.ModelForm):
-    tag = autocomplete_light.ChoiceField(widget = autocomplete_light.TextWidget('TagNameAutocompleteActionables'))
+    tag = autocomplete_light.ChoiceField(widget = autocomplete_light.TextWidget('TagInfoAutocompleteActionables'))
     class Meta:
-        model = TagName
+        model = TagInfo
+
 
 class ContextEditForm(forms.Form):
     def __init__(self,*args,**kwargs):
