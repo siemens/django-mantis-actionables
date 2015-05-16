@@ -832,7 +832,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
     # just imported. The function ``outdate_sources`` catches such
     # outdated sources and treats them accordingly.
 
-    #outdate_sources()
+    outdate_sources()
 
     fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
