@@ -718,7 +718,7 @@ class DashboardDataProvider(BasicTableDataProvider):
             id2colors = self.get_id_tlp_mapping(offset+0, q)
 
         if table_name == table_name_slug(self.TABLE_NAME_LATEST_EXTERNAL_REPORTS_IMPORTS):
-            id2tags = self.get_id_tag_mapping(offset+0, 'actionable_tags__actionable_tag__context__name', ImportInfo, q)
+            id2tags = self.get_id_tag_mapping(offset+0, 'actionable_tags__context__name', ImportInfo, q)
             id2colors = self.get_id_tlp_mapping(offset+0, q)
 
 
