@@ -832,7 +832,7 @@ def import_singleton_observables_from_export_result(top_level_iobj_identifier_pk
     # just imported. The function ``outdate_sources`` catches such
     # outdated sources and treats them accordingly.
 
-    outdate_sources()
+    #outdate_sources()
 
     fact_pks = set(map(lambda x: x.get('_fact_pk'), results))
     update_and_transfer_tags(fact_pks,user=user)
@@ -968,6 +968,8 @@ def outdate_sources(simulate=True):
 
     outdated_sources = Source.objects.filter(outdated=False).exclude(top_level_iobject_identifier__isnull=True).exclude(top_level_iobject_identifier__latest=F('top_level_iobject'))
 
+    outdated_sources_pks = map(lambda x: x.pk,outdated_sources)
+
     print "Starting"
 
 
@@ -998,12 +1000,12 @@ def outdate_sources(simulate=True):
         # all *other* non-outdated sources
 
         dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
-            filter(outdated=False).exclude(top_level_iobject_identifier=outdated_source.top_level_iobject_identifier).values_list('top_level_iobject_identifier__tags__name',flat=True)
+            filter(outdated=False).exclude(pk__in=outdated_sources_pks).values_list('top_level_iobject_identifier__tags__name',flat=True)
 
         #if simulate:
         #    # We have not marked this source as outdated
         #    dingos_tags_for_all_other_top_level_reports = Source.objects.filter(object_id=outdated_source.yielded.pk,content_type=CONTENT_TYPE_SINGLETON_OBSERVABLE).\
-        #        filter(outdated=False).exclude(top_level_iobject_identifier=outdated_source.top_level_iobject_identifier).values_list('top_level_iobject_identifier__tags__name',flat=True)
+        #        filter(outdated=False).exclude(id__in=).values_list('top_level_iobject_identifier__tags__name',flat=True)
 
         # Find out whether there are tags that were associated with singleton observable
         # yielded by the present source exclusively via this source -- those are
