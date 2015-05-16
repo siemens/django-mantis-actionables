@@ -992,6 +992,9 @@ def outdate_sources(simulate=True):
 
         dingos_tags_for_this_top_level_report = outdated_source.top_level_iobject_identifier.tags.all().values_list('name',flat=True)
 
+        contexts_attached_to_yieldable = set(map(lambda x: x.context.name, outdated_source.yielded.actionable_tags.all()))
+
+
         # Reduce the list to tags that denote an Actionable Context
         for regular_expr in MANTIS_ACTIONABLES_CONTEXT_TAG_REGEX:
             dingos_tags_for_this_top_level_report.filter(name__regex=regular_expr)
@@ -1014,7 +1017,7 @@ def outdate_sources(simulate=True):
         tags_to_mark_as_outdated = set()
 
         for tag in dingos_tags_for_this_top_level_report:
-            if not tag in dingos_tags_for_all_other_top_level_reports:
+            if (not tag in dingos_tags_for_all_other_top_level_reports) and (tag in contexts_attached_to_yieldable):
                 tags_to_mark_as_outdated.add(tag)
 
         if tags_to_mark_as_outdated:
@@ -1027,5 +1030,5 @@ def outdate_sources(simulate=True):
                                           comment="Indicator no longer in latest revision of report %s" % outdated_source.top_level_iobject_identifier,
                                           supress_transfer_to_dingos=True)
             else:
-                logger.info("SIMULATE. Would have tagged %s" % context_name_pairs)
+                logger.info("SIMULATE. Would have tagged %s for %s" % (context_name_pairs,outdated_source.yielded))
 
